@@ -1,25 +1,34 @@
-import { IsNotEmpty, IsOptional, IsString, IsInt, IsEmail } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsInt, IsEmail, Min, IsEnum } from 'class-validator';
+
+export enum TipoProveedor {
+  PEQUENA_CAMARONERA = 'PEQUENA_CAMARONERA',
+  MEDIANA_CAMARONERA = 'MEDIANA_CAMARONERA',
+  GRAN_CAMARONERA = 'GRAN_CAMARONERA'
+}
 
 export class CreateProviderDto {
   @IsNotEmpty()
   @IsString()
   name: string;
 
-  @IsOptional()
-  @IsString()
-  type?: string;
+  @IsNotEmpty()
+  @IsEnum(TipoProveedor, { 
+    message: 'El tipo debe ser: PEQUENA_CAMARONERA, MEDIANA_CAMARONERA o GRAN_CAMARONERA' 
+  })
+  type: TipoProveedor;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  location?: string;
+  location: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsInt()
-  capacity?: number;
+  @Min(1)
+  capacity: number;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  contact_whatsapp?: string;
+  contact_whatsapp: string;
 
   @IsOptional()
   @IsEmail()

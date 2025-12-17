@@ -8,7 +8,11 @@ import 'dotenv/config';
 
   async function bootstrap() {
     const app = await NestFactory.create(AppModule);
-    // Enable CORS for the frontend (Vite on 5173) and allow common headers/methods
+    // Enable ValidationPipe and CORS for the frontend (Vite on 5173)
+    const { ValidationPipe } = await import('@nestjs/common');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+    // Enable CORS and allow common headers/methods
     app.enableCors({
       origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],

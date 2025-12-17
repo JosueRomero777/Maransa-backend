@@ -10,19 +10,494 @@ datasource db {
   url      = env("DATABASE_URL") 
 }
 
+// ===== ENUMS =====
 
+enum TipoProveedor {
+  PEQUENA_CAMARONERA
+  MEDIANA_CAMARONERA
+  GRAN_CAMARONERA
+}
 
+enum TipoProducto {
+  VANNAMEI
+  LANGOSTINO
+  OTRO
+}
+
+enum TallaProducto {
+  U10
+  U12
+  U15
+  U20
+  U30
+  U40
+  U50
+  U60
+  U70
+  U80
+  U100
+}
+
+enum EstadoPedido {
+  CREADO
+  EN_ANALISIS
+  APROBADO
+  RECHAZADO
+  EN_REEVALUACION
+  DESCARTADO
+  EN_COSECHA
+  EN_TRANSITO
+  EN_CUSTODIA
+  RECIBIDO
+  FACTURADO
+  FINALIZADO
+}
+
+enum EstadoLaboratorio {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  EN_REEVALUACION
+}
+
+enum EstadoLogistica {
+  PENDIENTE
+  ASIGNADO
+  EN_RUTA
+  COMPLETADO
+}
+
+enum EstadoFactura {
+  BORRADOR
+  EMITIDA
+  AUTORIZADA_SRI
+  PAGADA
+  ANULADA
+  VENCIDA
+}
+
+enum TipoComprobante {
+  FACTURA
+  NOTA_CREDITO
+  NOTA_DEBITO
+  RETENCION
+}
+
+enum RolUsuario {
+  ADMIN
+  COMPRAS
+  LABORATORIO
+  LOGISTICA
+  CUSTODIA
+  EMPACADORA
+  GERENCIA
+}
+
+// ===== MODELOS =====
+
+// Usuarios del sistema
+model User {
+  id          Int         @id @default(autoincrement())
+  email       String      @unique
+  name        String
+  role        RolUsuario
+  password    String
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relaciones
+  pedidosCreados      Order[]       @relation("CreatedBy")
+  laboratorioAnalisis Laboratory[]  @relation("AnalistaLaboratorio")
+  logisticaAsignada   Logistics[]   @relation("LogisticaAssigned")
+  custodiaAsignada    Custody[]     @relation("CustodiaAssigned")
+  bitacoraEventos     EventLog[]    @relation("UserEventLog")
+
+  @@map("users")
+}
+
+// Proveedores (expandido)
 model Provider {
-  id                Int      @id @default(autoincrement())
-  name              String
-  type              String?
-  location          String?
-  capacity          Int?
-  contact_whatsapp  String?
+  id                    Int             @id @default(autoincrement())
+  name                  String          @unique
+  type                  TipoProveedor
+  location              String
+  capacity              Int
+  contact_whatsapp      String
+  contact_email         String?
+  contact_phone         String?
+  notes                 String?
+  active                Boolean         @default(true)
+  
+  // Información comercial adicional (nuevos campos)
+  condicionesComerciales String?
+  puntualidadPromedio   Float?          @default(0.0)
+  confiabilidadPromedio Float?          @default(0.0)
+  
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  // Relaciones
+  pedidos               Order[]
+  historialPrecios      PriceHistory[]
+
+  @@map("Provider")
+}
+
+// Empacadoras
+model Packager {
+  id                Int       @id @default(autoincrement())
+  name              String    @unique
+  location          String
   contact_email     String?
   contact_phone     String?
-  notes             String?
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  contact_whatsapp  String?
+  ruc               String?   @unique
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relaciones
+  pedidos           Order[]
+  facturas          Invoice[]
+  historialPrecios  PriceHistory[]
+
+  @@map("packagers")
+}
+
+// Pedidos principales
+model Order {
+  id                    Int               @id @default(autoincrement())
+  codigo                String            @unique // Código único del pedido
+  
+  // Referencias
+  providerId            Int
+  packagerId            Int?
+  createdById           Int
+  
+  // Información del producto
+  tipoProducto          TipoProducto
+  tallaEstimada         TallaProducto?
+  cantidadEstimada      Float             // Libras
+  cantidadFinal         Float?            // Libras definitivas
+  
+  // Fechas
+  fechaTentativaCosecha DateTime?
+  fechaDefinitivaCosecha DateTime?
+  fechaCreacion         DateTime          @default(now())
+  fechaActualizacion    DateTime          @updatedAt
+  
+  // Estado y precios
+  estado                EstadoPedido      @default(CREADO)
+  precioEstimadoCompra  Float?
+  precioRealCompra      Float?
+  precioEstimadoVenta   Float?
+  precioRealVenta       Float?
+  
+  // Condiciones comerciales
+  condicionesIniciales  String?
+  observaciones         String?
+
+  // Relaciones
+  provider              Provider          @relation(fields: [providerId], references: [id])
+  packager              Packager?         @relation(fields: [packagerId], references: [id])
+  createdBy             User              @relation("CreatedBy", fields: [createdById], references: [id])
+  
+  laboratorio           Laboratory?
+  logistica             Logistics?
+  custodia              Custody?
+  recepcion             Reception?
+  facturas              Invoice[]
+  eventLog              EventLog[]
+  notificaciones        Notification[]
+
+  @@map("orders")
+}
+
+// Módulo de Laboratorio
+model Laboratory {
+  id                    Int                 @id @default(autoincrement())
+  orderId               Int                 @unique
+  analistaId            Int
+  
+  estado                EstadoLaboratorio   @default(PENDIENTE)
+  fechaAnalisis         DateTime            @default(now())
+  fechaReevaluacion     DateTime?
+  
+  // Resultados
+  resultadoGeneral      String?             // Descripción general
+  parametrosQuimicos    Json?               // Datos estructurados de análisis
+  observaciones         String?
+  motivoRechazo         String?
+  
+  // Archivos adjuntos
+  archivosAdjuntos      String[]            // URLs de PDFs, imágenes
+  
+  // Características organolépticas
+  olor                  String?
+  sabor                 String?
+  textura               String?
+  apariencia            String?
+  
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relaciones
+  order                 Order               @relation(fields: [orderId], references: [id])
+  analista              User                @relation("AnalistaLaboratorio", fields: [analistaId], references: [id])
+
+  @@map("laboratory_analysis")
+}
+
+// Módulo de Logística
+model Logistics {
+  id                    Int               @id @default(autoincrement())
+  orderId               Int               @unique
+  assignedUserId        Int?
+  
+  estado                EstadoLogistica   @default(PENDIENTE)
+  fechaAsignacion       DateTime?
+  fechaInicio           DateTime?
+  fechaFinalizacion     DateTime?
+  
+  // Vehículos y recursos
+  vehiculoAsignado      String?
+  choferAsignado        String?
+  recursosUtilizados    Json?             // vines, tanques, oxígeno, etc.
+  
+  // Ubicaciones
+  ubicacionOrigen       String?
+  ubicacionDestino      String?
+  rutaPlanificada       String?
+  
+  // Evidencias
+  evidenciasCarga       String[]          // URLs de fotos/documentos
+  evidenciasTransporte  String[]
+  
+  observaciones         String?
+  incidentes            String?
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  // Relaciones
+  order                 Order             @relation(fields: [orderId], references: [id])
+  assignedUser          User?             @relation("LogisticaAssigned", fields: [assignedUserId], references: [id])
+
+  @@map("logistics")
+}
+
+// Módulo de Custodia
+model Custody {
+  id                    Int         @id @default(autoincrement())
+  orderId               Int         @unique
+  assignedUserId        Int?
+  
+  horarioPesca          DateTime?
+  horarioEstimadoLlegada DateTime?
+  horarioRealLlegada    DateTime?
+  
+  personalAsignado      String?
+  vehiculoAcompanado    String?
+  
+  // Bitácora de ruta
+  incidentes            Json?       // Array de incidentes con timestamp
+  novedades             String?
+  ubicacionesRegistradas Json?      // Puntos GPS registrados
+  
+  observaciones         String?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  // Relaciones
+  order                 Order       @relation(fields: [orderId], references: [id])
+  assignedUser          User?       @relation("CustodiaAssigned", fields: [assignedUserId], references: [id])
+
+  @@map("custody")
+}
+
+// Módulo de Recepción en Empacadora
+model Reception {
+  id                    Int         @id @default(autoincrement())
+  orderId               Int         @unique
+  
+  fechaLlegada          DateTime
+  horaLlegada           String
+  
+  // Validación de recepción
+  pesoRecibido          Float?
+  calidadValidada       Boolean     @default(false)
+  loteAceptado          Boolean     @default(false)
+  motivoRechazo         String?
+  
+  // Clasificación final
+  tallasFinales         Json?       // Distribución por tallas
+  clasificacionFinal    String?
+  
+  // Precios finales
+  precioFinalVenta      Float?
+  condicionesVenta      String?
+  
+  observaciones         String?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  // Relaciones
+  order                 Order       @relation(fields: [orderId], references: [id])
+
+  @@map("reception")
+}
+
+// Módulo de Facturación
+model Invoice {
+  id                    Int               @id @default(autoincrement())
+  numero                String            @unique
+  codigo                String?           // Código interno
+  
+  orderId               Int
+  packagerId            Int
+  
+  // Información SRI
+  tipoComprobante       TipoComprobante
+  numeroAutorizacion    String?
+  claveAcceso           String?
+  fechaAutorizacion     DateTime?
+  
+  // Datos de facturación
+  fechaEmision          DateTime          @default(now())
+  fechaVencimiento      DateTime?
+  
+  // Montos
+  subtotal              Float
+  iva                   Float
+  descuentos            Float?            @default(0)
+  total                 Float
+  
+  // Estado
+  estado                EstadoFactura     @default(BORRADOR)
+  
+  // Pagos
+  fechaPago             DateTime?
+  montoPagado           Float?            @default(0)
+  saldoPendiente        Float?
+  
+  observaciones         String?
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  // Relaciones
+  order                 Order             @relation(fields: [orderId], references: [id])
+  packager              Packager          @relation(fields: [packagerId], references: [id])
+  pagos                 Payment[]
+
+  @@map("invoices")
+}
+
+// Pagos
+model Payment {
+  id                    Int         @id @default(autoincrement())
+  invoiceId             Int
+  
+  monto                 Float
+  fechaPago             DateTime
+  metodoPago            String      // efectivo, transferencia, cheque, etc.
+  referencia            String?     // número de transferencia, cheque, etc.
+  
+  observaciones         String?
+  
+  createdAt             DateTime    @default(now())
+
+  // Relaciones
+  invoice               Invoice     @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+// Historial de Precios
+model PriceHistory {
+  id                    Int         @id @default(autoincrement())
+  
+  providerId            Int?
+  packagerId            Int?
+  
+  tipoProducto          TipoProducto
+  talla                 TallaProducto?
+  
+  precioCompra          Float?
+  precioVenta           Float?
+  
+  fecha                 DateTime    @default(now())
+  temporada             String?     // verano, invierno, etc.
+  
+  observaciones         String?
+
+  // Relaciones
+  provider              Provider?   @relation(fields: [providerId], references: [id])
+  packager              Packager?   @relation(fields: [packagerId], references: [id])
+
+  @@map("price_history")
+}
+
+// Sistema de Notificaciones
+model Notification {
+  id                    Int         @id @default(autoincrement())
+  orderId               Int
+  
+  tipo                  String      // whatsapp, email, sms
+  destinatario          String      // número o email
+  asunto                String?
+  mensaje               String
+  
+  enviado               Boolean     @default(false)
+  fechaEnvio            DateTime?
+  fechaLectura          DateTime?
+  
+  respuesta             String?
+  
+  createdAt             DateTime    @default(now())
+
+  // Relaciones
+  order                 Order       @relation(fields: [orderId], references: [id])
+
+  @@map("notifications")
+}
+
+// Bitácora de Eventos (Auditoría)
+model EventLog {
+  id                    Int         @id @default(autoincrement())
+  
+  orderId               Int?
+  userId                Int
+  
+  accion                String      // "pedido_creado", "laboratorio_aprobado", etc.
+  descripcion           String
+  datosAnteriores       Json?       // Estado antes del cambio
+  datosNuevos           Json?       // Estado después del cambio
+  
+  ip                    String?
+  userAgent             String?
+  
+  createdAt             DateTime    @default(now())
+
+  // Relaciones
+  order                 Order?      @relation(fields: [orderId], references: [id])
+  user                  User        @relation("UserEventLog", fields: [userId], references: [id])
+
+  @@map("event_logs")
+}
+
+// Configuraciones del Sistema
+model SystemConfig {
+  id                    Int         @id @default(autoincrement())
+  clave                 String      @unique
+  valor                 String
+  descripcion           String?
+  
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@map("system_config")
 }
