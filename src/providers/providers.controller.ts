@@ -32,6 +32,12 @@ export class ProvidersController {
     return this.providersService.findAll(query);
   }
 
+  @Get('used-types')
+  @Roles(RolUsuario.ADMIN, RolUsuario.COMPRAS, RolUsuario.LABORATORIO, RolUsuario.LOGISTICA, RolUsuario.GERENCIA)
+  getUsedTypes() {
+    return this.providersService.getUsedTypes();
+  }
+
   @Get(':id')
   @Roles(RolUsuario.ADMIN, RolUsuario.COMPRAS, RolUsuario.LABORATORIO, RolUsuario.LOGISTICA, RolUsuario.GERENCIA)
   findOne(@Param('id', ParseIntPipe) id: number) {

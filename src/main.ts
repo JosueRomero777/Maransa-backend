@@ -8,9 +8,25 @@ import 'dotenv/config';
 
   async function bootstrap() {
     const app = await NestFactory.create(AppModule);
+    
+    // Configure body parser middleware
+    app.use(async (req, res, next) => {
+      if (req.method === 'POST' && !req.body) {
+        console.log(`[BodyParser] POST request detected, Content-Type: ${req.get('content-type')}`);
+      }
+      next();
+    });
+
     // Enable ValidationPipe and CORS for the frontend (Vite on 5173)
     const { ValidationPipe } = await import('@nestjs/common');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ 
+        whitelist: false,
+        forbidNonWhitelisted: false,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true }
+      })
+    );
 
     // Enable CORS and allow common headers/methods
     app.enableCors({

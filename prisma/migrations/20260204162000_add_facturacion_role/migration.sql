@@ -1,0 +1,2 @@
+-- Add FACTURACION role to RolUsuario enum
+ALTER TYPE "RolUsuario" ADD VALUE IF NOT EXISTS 'FACTURACION';

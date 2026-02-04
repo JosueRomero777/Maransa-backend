@@ -34,6 +34,20 @@ export class ProvidersService {
     return !!existingProvider;
   }
 
+  async getUsedTypes(): Promise<string[]> {
+    const providers = await this.prisma.provider.findMany({
+      select: {
+        type: true,
+      },
+      distinct: ['type'],
+    });
+
+    return providers
+      .map(provider => provider.type)
+      .filter(Boolean)
+      .sort();
+  }
+
   async create(createProviderDto: CreateProviderDto) {
     // Check for duplicate name
     const isDuplicate = await this.checkDuplicateName(createProviderDto.name);
