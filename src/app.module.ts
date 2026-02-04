@@ -25,7 +25,7 @@ import { ShrimpSizesModule } from './shrimp-sizes/shrimp-sizes.module';
   imports: [
     ProvidersModule, 
     AuthModule, 
-    //SeederModule,
+    SeederModule,
     UsersModule, 
     OrdersModule, 
     PackagersModule,
