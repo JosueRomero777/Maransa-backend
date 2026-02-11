@@ -108,4 +108,13 @@ export class InvoiceConfigService {
       where: { id },
     });
   }
+
+  async updateCertificatePath(id: number, rutaCertificado: string) {
+    await this.findOne(id); // Verificar existencia
+
+    return this.prisma.invoiceConfig.update({
+      where: { id },
+      data: { rutaCertificado },
+    });
+  }
 }

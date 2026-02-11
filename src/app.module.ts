@@ -20,6 +20,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { EventLogsModule } from './event-logs/event-logs.module';
 import { InvoicingModule } from './invoicing/invoicing.module';
 import { ShrimpSizesModule } from './shrimp-sizes/shrimp-sizes.module';
+import { TrackingModule } from './tracking/tracking.module';
+import { CustodyTrackingModule } from './custody-tracking/custody-tracking.module';
 
 @Module({
   imports: [
@@ -38,7 +40,9 @@ import { ShrimpSizesModule } from './shrimp-sizes/shrimp-sizes.module';
     HarvestModule,
     EventLogsModule,
     InvoicingModule,
-    ShrimpSizesModule
+    ShrimpSizesModule,
+    TrackingModule,
+    CustodyTrackingModule,
   ],
   controllers: [AppController],
   providers: [

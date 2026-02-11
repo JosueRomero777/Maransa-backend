@@ -353,6 +353,12 @@ model Logistics {
   ultimaActualizacion   DateTime?
   historialUbicaciones  Json?             // Array de {lat, lng, timestamp}
   
+  // Sesión de tracking (solo 1 rastreador activo)
+  usuarioTrackingActivo Int?              // ID del único usuario que está rastreando
+  sessionIdTracking     String?           // ID único de la sesión
+  fechaInicioTracking   DateTime?         // Cuándo comenzó el tracking
+  fechaCierreTracking   DateTime?         // Cuándo terminó el tracking
+  
   // Evidencias
   evidenciasCarga       String[]          // URLs de fotos/documentos
   evidenciasTransporte  String[]
@@ -389,6 +395,19 @@ model Custody {
   personalAsignado      Json?       // Array de personal asignado
   vehiculoCustodia      String?
   rutaCustodia          String?
+
+  // Seguimiento en tiempo real (custodia)
+  trackingActivo        Boolean     @default(false)
+  ubicacionActualLat    Float?
+  ubicacionActualLng    Float?
+  ultimaActualizacion   DateTime?
+  historialUbicaciones  Json?       // Array de {lat, lng, timestamp}
+
+  // Sesion de tracking (solo 1 rastreador activo)
+  usuarioTrackingActivo Int?
+  sessionIdTracking     String?
+  fechaInicioTracking   DateTime?
+  fechaCierreTracking   DateTime?
   
   // Evidencias
   evidenciasIniciales   Json?       // Array de rutas de archivos iniciales

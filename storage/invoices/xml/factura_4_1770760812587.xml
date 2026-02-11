@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>Prueba</razonSocial>
+    <nombreComercial>Prueba</nombreComercial>
+    <ruc>0103449047001</ruc>
+    <claveAcceso>0902202601010344904700110010010000000019091316317</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000001</secuencial>
+    <dirMatriz>Las herrerias</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>09/02/2026</fechaEmision>
+    <dirEstablecimiento>Las herrerias</dirEstablecimiento>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>07</tipoIdentificacionComprador>
+    <razonSocialComprador>CONSUMIDOR FINAL</razonSocialComprador>
+    <identificacionComprador>9999999999999</identificacionComprador>
+    <totalSinImpuestos>3000.00</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>0</codigoPorcentaje>
+        <baseImponible>3000.00</baseImponible>
+        <valor>0.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>3000.00</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>01</formaPago>
+        <total>3000.00</total>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>ORD-2026-0001</codigoPrincipal>
+      <codigoAuxiliar>1</codigoAuxiliar>
+      <descripcion>Sin Cola (Headless) 16/20 - Jumbo (Sin Cola) - Orden ORD-2026-0001</descripcion>
+      <cantidad>2000.00</cantidad>
+      <precioUnitario>1.500000</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>3000.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>0</codigoPorcentaje>
+          <tarifa>0</tarifa>
+          <baseImponible>3000.00</baseImponible>
+          <valor>0.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Observaciones">prueba</campoAdicional>
+    <campoAdicional nombre="Empacadora">Empacadora Costa Azul</campoAdicional>
+    <campoAdicional nombre="Orden">1</campoAdicional>
+  </infoAdicional>
+</factura>

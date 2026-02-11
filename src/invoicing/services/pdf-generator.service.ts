@@ -7,6 +7,10 @@ import * as QRCode from 'qrcode';
 interface InvoiceData {
   id: string;
   numeroDocumento: string;
+  numeroAutorizacion?: string;
+  fechaAutorizacion?: string;
+  ambiente?: string;
+  emision?: string;
   fecha: string;
   claveAcceso: string;
   razonSocial: string;
@@ -17,8 +21,11 @@ interface InvoiceData {
   clienteNombre: string;
   clienteRuc: string;
   clienteDireccion: string;
+  clienteEmail?: string;
+  clienteTelefono?: string;
   detalles: Array<{
     codigo: string;
+    codigoAuxiliar?: string;
     descripcion: string;
     cantidad: number;
     precioUnitario: number;
@@ -89,144 +96,165 @@ export class PdfGeneratorService {
       const writeStream = require('fs').createWriteStream(outputPath);
       doc.pipe(writeStream);
 
-      // Generar código QR
-      const qrCodeDataUrl = await QRCode.toDataURL(invoiceData.claveAcceso, {
-        errorCorrectionLevel: 'H',
-        type: 'image/png',
-        width: 100,
-      });
-
-      const qrBuffer = Buffer.from(qrCodeDataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
+      const ambient = invoiceData.ambiente || this.getAmbienteFromClave(invoiceData.claveAcceso);
+      const emision = invoiceData.emision || 'NORMAL';
+      const numeroAutorizacion = invoiceData.numeroAutorizacion || 'N/A';
+      const fechaAutorizacion = invoiceData.fechaAutorizacion
+        ? this.formatDateTime(invoiceData.fechaAutorizacion)
+        : 'N/A';
 
       // ============ HEADER ============
-      doc.fontSize(16).font('Helvetica-Bold').text(invoiceData.razonSocial || 'N/A', { align: 'center' });
-      doc.fontSize(10).font('Helvetica').text(`RUC: ${invoiceData.ruc || 'N/A'}`, { align: 'center' });
-      doc.fontSize(10).text(invoiceData.direccion || 'N/A', { align: 'center' });
-      if (invoiceData.telefono) {
-        doc.fontSize(9).text(`Tel: ${invoiceData.telefono}`, { align: 'center' });
+      const logoPath = path.resolve(process.cwd(), '..', 'maransa', 'src', 'assets', 'camaron.png');
+      if (await this.fileExists(logoPath)) {
+        // Logo centrado sobre la caja emisor (issuerBox x=40, w=250, centro=165)
+        doc.image(logoPath, 130, 45, { width: 70 });
       }
 
-      doc.moveTo(40, doc.y + 5).lineTo(550, doc.y + 5).stroke();
-      doc.moveDown();
+      // Caja derecha de documento
+      const docBoxX = 300;
+      const docBoxY = 35;
+      const docBoxW = 250;
+      const docBoxH = 175;
+      doc.rect(docBoxX, docBoxY, docBoxW, docBoxH).stroke();
 
-      // ============ INFORMACIÓN DE DOCUMENTO ============
-      doc.fontSize(12).font('Helvetica-Bold').text('FACTURA', { align: 'center' });
-      doc.fontSize(9).font('Helvetica');
+      let cursorY = docBoxY + 8;
+      doc.fontSize(8).font('Helvetica');
+      doc.text(`R.U.C.: ${invoiceData.ruc || 'N/A'}`, docBoxX + 8, cursorY, { width: docBoxW - 16 });
+      cursorY += 14;
+      doc.fontSize(11).font('Helvetica-Bold').text('FACTURA', docBoxX + 8, cursorY, { width: docBoxW - 16, align: 'left' });
+      cursorY += 18;
+      doc.fontSize(8).font('Helvetica').text(`No: ${invoiceData.numeroDocumento || 'N/A'}`, docBoxX + 8, cursorY, { width: docBoxW - 16 });
+      cursorY += 18;
+      doc.font('Helvetica-Bold').text(`NUMERO DE AUTORIZACION:`, docBoxX + 8, cursorY, { width: docBoxW - 16 });
+      cursorY += 10;
+      doc.font('Helvetica').text(`${numeroAutorizacion}`, docBoxX + 8, cursorY, { width: docBoxW - 16 });
+      cursorY += 14;
+      doc.font('Helvetica-Bold').text(`FECHA Y HORA DE AUTORIZACION: `, docBoxX + 8, cursorY, { width: docBoxW - 16, continued: true });
+      doc.font('Helvetica').text(`${fechaAutorizacion}`, { width: docBoxW - 16 });
+      cursorY += 14;
+      doc.font('Helvetica-Bold').text(`AMBIENTE: `, docBoxX + 8, cursorY, { continued: true });
+      doc.font('Helvetica').text(`${ambient}`);
+      cursorY += 14;
+      doc.font('Helvetica-Bold').text(`EMISION: `, docBoxX + 8, cursorY, { continued: true });
+      doc.font('Helvetica').text(`${emision}`);
+      cursorY += 14;
+      doc.font('Helvetica-Bold').text('CLAVE DE ACCESO:', docBoxX + 8, cursorY, { width: docBoxW - 16 });
+      cursorY += 10;
 
-      const infoBox = [
-        { label: 'Número:', value: invoiceData.numeroDocumento || 'N/A' },
-        { label: 'Fecha:', value: this.formatDate(invoiceData.fecha) },
-        { label: 'Clave de Acceso:', value: invoiceData.claveAcceso || 'N/A' },
-      ];
+      // Código de barras
+      const barcodeY = cursorY;
+      const barcodeBuffer = await this.generateBarcode(invoiceData.claveAcceso);
+      if (barcodeBuffer) {
+        doc.image(barcodeBuffer, docBoxX + 8, barcodeY, { width: docBoxW - 16, height: 25 });
+        // Texto de clave debajo del código de barras
+        doc.fontSize(7).font('Helvetica').text(invoiceData.claveAcceso || 'N/A', docBoxX + 8, barcodeY + 27, { width: docBoxW - 16 });
+      } else {
+        // Si no hay código de barras, solo mostrar el texto
+        doc.fontSize(7).font('Helvetica').text(invoiceData.claveAcceso || 'N/A', docBoxX + 8, barcodeY, { width: docBoxW - 16 });
+      }
 
-      doc.x = 40;
-      infoBox.forEach((item, index) => {
-        const y = doc.y;
-        doc.text(`${item.label} ${item.value}`, 50, y);
-        if (index < infoBox.length - 1) doc.moveDown(0.5);
-      });
+      // Caja izquierda de emisor
+      const issuerBoxX = 40;
+      const issuerBoxY = 145;
+      const issuerBoxW = 250;
+      const issuerBoxH = 95;
+      doc.roundedRect(issuerBoxX, issuerBoxY, issuerBoxW, issuerBoxH, 6).stroke();
+      let issuerY = issuerBoxY + 8;
+      doc.fontSize(8).font('Helvetica-Bold').text(invoiceData.razonSocial || 'N/A', issuerBoxX + 8, issuerY, { width: issuerBoxW - 16 });
+      issuerY += 14;
+      doc.fontSize(8).font('Helvetica-Bold').text(`DIRECCION:`, issuerBoxX + 8, issuerY, { continued: true });
+      doc.font('Helvetica').text(` ${invoiceData.direccion || 'N/A'}`, { width: issuerBoxW - 16 });
+      issuerY += 14;
+      doc.font('Helvetica-Bold').text(`EMAIL:`, issuerBoxX + 8, issuerY, { continued: true });
+      doc.font('Helvetica').text(` ${invoiceData.email || '-'}`, { width: issuerBoxW - 16 });
+      issuerY += 14;
+      doc.font('Helvetica-Bold').text(`TELEFONO:`, issuerBoxX + 8, issuerY, { continued: true });
+      doc.font('Helvetica').text(` ${invoiceData.telefono || '-'}`, { width: issuerBoxW - 16 });
+      issuerY += 14;
+      doc.font('Helvetica-Bold').text('OBLIGADO A LLEVAR CONTABILIDAD:', issuerBoxX + 8, issuerY, { width: issuerBoxW - 16, continued: true });
+      doc.font('Helvetica').text(' N/A', { width: issuerBoxW - 16 });
 
-      doc.moveDown();
-      doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown();
-
-      // ============ INFORMACIÓN DEL CLIENTE ============
-      doc.fontSize(10).font('Helvetica-Bold').text('CLIENTE:', 50);
-      doc.fontSize(9).font('Helvetica');
-      doc.text(`Nombre: ${invoiceData.clienteNombre || 'N/A'}`);
-      doc.text(`RUC/Cédula: ${invoiceData.clienteRuc || 'N/A'}`);
-      doc.text(`Dirección: ${invoiceData.clienteDireccion || 'N/A'}`);
-
-      doc.moveDown(0.5);
-      doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown();
+      // Caja cliente
+      const buyerBoxX = 40;
+      const buyerBoxY = 250;
+      const buyerBoxW = 510;
+      const buyerBoxH = 56;
+      doc.rect(buyerBoxX, buyerBoxY, buyerBoxW, buyerBoxH).stroke();
+      doc.fontSize(8).font('Helvetica-Bold').text('RAZON SOCIAL:', buyerBoxX + 8, buyerBoxY + 8);
+      doc.fontSize(8).font('Helvetica').text(invoiceData.clienteNombre || 'N/A', buyerBoxX + 90, buyerBoxY + 8, { width: 260 });
+      doc.fontSize(8).font('Helvetica-Bold').text('RUC/CI:', buyerBoxX + 360, buyerBoxY + 8);
+      doc.fontSize(8).font('Helvetica').text(invoiceData.clienteRuc || 'N/A', buyerBoxX + 410, buyerBoxY + 8);
+      doc.fontSize(8).font('Helvetica-Bold').text('DIRECCION:', buyerBoxX + 8, buyerBoxY + 24);
+      doc.fontSize(8).font('Helvetica').text(invoiceData.clienteDireccion || 'N/A', buyerBoxX + 70, buyerBoxY + 24, { width: 260 });
+      doc.fontSize(8).font('Helvetica-Bold').text('FECHA DE EMISION:', buyerBoxX + 360, buyerBoxY + 24);
+      doc.fontSize(8).font('Helvetica').text(this.formatDate(invoiceData.fecha), buyerBoxX + 455, buyerBoxY + 24);
+      doc.fontSize(8).font('Helvetica-Bold').text('GUÍA DE REMISIÓN:', buyerBoxX + 8, buyerBoxY + 40);
+      doc.fontSize(8).font('Helvetica').text('N/A', buyerBoxX + 110, buyerBoxY + 40);
 
       // ============ DETALLES ============
+      doc.y = buyerBoxY + buyerBoxH + 10;
       this.drawItemsTable(doc, invoiceData.detalles);
 
-      doc.moveDown(0.5);
-      doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown();
+      // ============ INFO ADICIONAL Y TOTALES ============
+      const bottomY = doc.y + 10;
+      const infoBoxX = 40;
+      const infoBoxY = bottomY;
+      const infoBoxW = 300;
+      const infoBoxH = 110;
+      doc.rect(infoBoxX, infoBoxY, infoBoxW, infoBoxH).stroke();
+      doc.fontSize(8).font('Helvetica-Bold').text('INFORMACION ADICIONAL', infoBoxX + 8, infoBoxY + 6);
+      doc.fontSize(8).font('Helvetica-Bold').text(`DIRECCION:`, infoBoxX + 8, infoBoxY + 20, { continued: true });
+      doc.font('Helvetica').text(` ${invoiceData.clienteDireccion || '-'}`, { width: infoBoxW - 16 });
+      doc.font('Helvetica-Bold').text(`CORREO:`, infoBoxX + 8, infoBoxY + 34, { continued: true });
+      doc.font('Helvetica').text(` ${invoiceData.clienteEmail || '-'}`, { width: infoBoxW - 16 });
+      doc.font('Helvetica-Bold').text(`TELEFONO:`, infoBoxX + 8, infoBoxY + 48, { continued: true });
+      doc.font('Helvetica').text(` ${invoiceData.clienteTelefono || '-'}`, { width: infoBoxW - 16 });
 
-      // ============ TOTALES ============
-      const rightX = 450;
-      doc.fontSize(9).font('Helvetica');
+      const pagosY = infoBoxY + 70;
+      doc.rect(infoBoxX + 6, pagosY, infoBoxW - 12, 34).stroke();
+      doc.fontSize(7).font('Helvetica-Bold').text('COD', infoBoxX + 10, pagosY + 4);
+      doc.text('FORMA DE PAGO', infoBoxX + 35, pagosY + 4);
+      doc.text('VALOR', infoBoxX + 200, pagosY + 4);
+      doc.text('PLAZO', infoBoxX + 245, pagosY + 4);
+      doc.fontSize(7).font('Helvetica').text(invoiceData.formaPago || '01', infoBoxX + 12, pagosY + 18);
+      doc.text(this.getFormaPagoNombre(invoiceData.formaPago), infoBoxX + 35, pagosY + 18, { width: 150 });
+      doc.text(`$${invoiceData.total.toFixed(2)}`, infoBoxX + 200, pagosY + 18);
+      doc.text(invoiceData.plazoCredito ? `${invoiceData.plazoCredito}` : '-', infoBoxX + 245, pagosY + 18);
 
-      const totals: Array<{ label: string; value: string; isBold?: boolean }> = [
-        { label: 'Subtotal:', value: `$${invoiceData.subtotalSinImpuestos.toFixed(2)}` },
+      const totalsBoxX = 360;
+      const totalsBoxY = bottomY;
+      const totalsBoxW = 190;
+      const totalsBoxH = 110;
+      doc.rect(totalsBoxX, totalsBoxY, totalsBoxW, totalsBoxH).stroke();
+      doc.fontSize(8).font('Helvetica');
+
+      const totalDescuento = invoiceData.detalles.reduce((sum, d) => sum + (d.descuento || 0), 0);
+      
+      // Calcular IVA desglosado
+      const iva5 = invoiceData.subtotal5 * 0.05;
+      const iva15 = invoiceData.subtotal15 * 0.15;
+      
+      const totals = [
+        { label: 'SUBTOTAL 5%', value: invoiceData.subtotal5 },
+        { label: 'SUBTOTAL 15% (USD)', value: invoiceData.subtotal15 },
+        { label: 'SUBTOTAL 0%', value: invoiceData.subtotal0 },
+        { label: 'SUBTOTAL SIN IMPUESTO', value: invoiceData.subtotalSinImpuestos },
+        { label: 'DESCUENTO', value: totalDescuento },
+        { label: 'IVA 5% (USD)', value: iva5 },
+        { label: 'IVA 15% (USD)', value: iva15 },
+        { label: 'TOTAL (USD)', value: invoiceData.total },
       ];
 
-      if (invoiceData.subtotal0 > 0) {
-        totals.push({ label: '  Tarifa 0%:', value: `$${invoiceData.subtotal0.toFixed(2)}` });
-      }
-      if (invoiceData.subtotal5 > 0) {
-        totals.push({ label: '  Tarifa 5%:', value: `$${invoiceData.subtotal5.toFixed(2)}` });
-      }
-      if (invoiceData.subtotal12 > 0) {
-        totals.push({ label: '  Tarifa 12%:', value: `$${invoiceData.subtotal12.toFixed(2)}` });
-      }
-      if (invoiceData.subtotal14 > 0) {
-        totals.push({ label: '  Tarifa 14%:', value: `$${invoiceData.subtotal14.toFixed(2)}` });
-      }
-      if (invoiceData.subtotal15 > 0) {
-        totals.push({ label: '  Tarifa 15%:', value: `$${invoiceData.subtotal15.toFixed(2)}` });
-      }
-      if (invoiceData.subtotal20 > 0) {
-        totals.push({ label: '  Tarifa 20%:', value: `$${invoiceData.subtotal20.toFixed(2)}` });
-      }
-
-      totals.push({ label: 'IVA Total:', value: `$${invoiceData.iva.toFixed(2)}` });
-      totals.push({ label: 'TOTAL:', value: `$${invoiceData.total.toFixed(2)}`, isBold: true });
-
-      totals.forEach((total) => {
-        if (total.isBold) {
-          doc.font('Helvetica-Bold').fontSize(11);
-        }
-        doc.text(total.label, 40);
-        doc.text(total.value, rightX, doc.y - doc.currentLineHeight(), { align: 'right' });
-        if (total.isBold) {
-          doc.font('Helvetica').fontSize(9);
-        } else {
-          doc.moveDown(0.3);
-        }
+      let totalsY = totalsBoxY + 8;
+      totals.forEach((item) => {
+        doc.text(item.label, totalsBoxX + 6, totalsY, { width: 120 });
+        doc.text(`$${item.value.toFixed(2)}`, totalsBoxX + 120, totalsY, { width: 60, align: 'right' });
+        totalsY += 12;
       });
 
-      doc.moveDown();
-
-      // ============ INFORMACIÓN ADICIONAL ============
-      if (invoiceData.formaPago) {
-        doc.fontSize(9).text(`Forma de Pago: ${invoiceData.formaPago}`);
-      }
-      if (invoiceData.plazoCredito) {
-        doc.text(`Plazo de Crédito: ${invoiceData.plazoCredito} días`);
-      }
-      if (invoiceData.observaciones) {
-        doc.text(`Observaciones: ${invoiceData.observaciones}`);
-      }
-
-      doc.moveDown();
-      doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown();
-
-      // ============ CÓDIGO QR ============
-      doc.fontSize(10).font('Helvetica-Bold').text('Clave de Acceso:', 40);
-      doc.fontSize(9).font('Helvetica').text(invoiceData.claveAcceso || 'N/A', { align: 'center' });
-      doc.moveDown(1);
-
-      // Insertar QR (centrado)
-      const qrY = doc.y;
-      doc.image(qrBuffer, 250, qrY, { width: 100, height: 100 });
-      
-      // Mover cursor después del QR
-      doc.y = qrY + 110;
-
       // ============ FOOTER ============
-      doc.fontSize(8).text(
-        'RIDE (Representación Impresa de Documento Electrónico)',
-        { align: 'center' },
-      );
-      doc.text('Este documento es una representación del Comprobante Electrónico', { align: 'center' });
-      doc.text('Generado por MARANSA CIA LTDA', { align: 'center' });
+      const footerY = Math.max(infoBoxY + infoBoxH + 15, totalsBoxY + totalsBoxH + 15);
+      doc.fontSize(7).font('Helvetica').text('Pagina 1 de 1', 40, footerY, { align: 'center', width: 510 });
 
       // Finalizar documento
       doc.end();
@@ -252,40 +280,57 @@ export class PdfGeneratorService {
    */
   private drawItemsTable(doc: any, detalles: InvoiceData['detalles']): void {
     const tableTop = doc.y;
-    const col1X = 45;
-    const col2X = 130;
-    const col3X = 340;
-    const col4X = 415;
-    const col5X = 490;
-    const rowHeight = 20;
+    const rowHeight = 18;
 
-    // Encabezados
-    doc.fontSize(9).font('Helvetica-Bold');
-    doc.text('Código', col1X, tableTop);
-    doc.text('Descripción', col2X, tableTop);
-    doc.text('Cant.', col3X, tableTop, { width: 60, align: 'center' });
-    doc.text('Precio', col4X, tableTop, { width: 60, align: 'right' });
-    doc.text('Total', col5X, tableTop, { width: 60, align: 'right' });
+    const colNo = 42;
+    const colCodigo = 60;
+    const colAux = 100;
+    const colDesc = 150;
+    const colCant = 305;
+    const colPrecio = 345;
+    const colSubsidio = 390;
+    const colSinSub = 435;
+    const colDescVal = 480;
+    const colTotal = 515;
 
-    // Línea separadora
-    doc.moveTo(40, tableTop + rowHeight - 5).lineTo(550, tableTop + rowHeight - 5).stroke();
+    doc.fontSize(6).font('Helvetica-Bold');
+    doc.text('No', colNo, tableTop, { width: 15 });
+    doc.text('CODIGO', colCodigo, tableTop, { width: 35 });
+    doc.text('CODIGO AUX.', colAux, tableTop, { width: 45 });
+    doc.text('DESCRIPCION', colDesc, tableTop, { width: 150 });
+    doc.text('CANTIDAD', colCant, tableTop, { width: 35, align: 'right' });
+    doc.text('PRECIO U.', colPrecio, tableTop, { width: 40, align: 'right' });
+    doc.text('SUBSIDIO', colSubsidio, tableTop, { width: 40, align: 'right' });
+    doc.text('PRECIO SIN', colSinSub, tableTop, { width: 40, align: 'center' });
+    doc.text('SUBSIDIO', colSinSub, tableTop + 8, { width: 40, align: 'center' });
+    doc.text('DESC.', colDescVal, tableTop, { width: 30, align: 'right' });
+    doc.text('TOTAL', colTotal, tableTop, { width: 35, align: 'right' });
 
-    // Items
-    doc.fontSize(8).font('Helvetica');
-    let currentY = tableTop + rowHeight;
+    doc.moveTo(40, tableTop + rowHeight + 2).lineTo(550, tableTop + rowHeight + 2).stroke();
 
-    detalles.forEach((item) => {
-      // Saltar a nueva página si es necesario
-      if (currentY > 700) {
+    doc.fontSize(6).font('Helvetica');
+    let currentY = tableTop + rowHeight + 4;
+
+    detalles.forEach((item, index) => {
+      if (currentY > 520) {
         doc.addPage();
         currentY = 50;
       }
 
-      doc.text(item.codigo || '-', col1X, currentY, { width: 70 });
-      doc.text(item.descripcion || '-', col2X, currentY, { width: 180 });
-      doc.text((item.cantidad || 0).toString(), col3X, currentY, { width: 60, align: 'center' });
-      doc.text(`$${(item.precioUnitario || 0).toFixed(2)}`, col4X, currentY, { width: 60, align: 'right' });
-      doc.text(`$${(item.subtotal || 0).toFixed(2)}`, col5X, currentY, { width: 60, align: 'right' });
+      const descuento = item.descuento || 0;
+      const precio = item.precioUnitario || 0;
+      const subtotal = item.subtotal || 0;
+
+      doc.text(String(index + 1), colNo, currentY, { width: 15 });
+      doc.text(item.codigo || '-', colCodigo, currentY, { width: 35 });
+      doc.text(item.codigoAuxiliar || '-', colAux, currentY, { width: 45 });
+      doc.text(item.descripcion || '-', colDesc, currentY, { width: 150 });
+      doc.text((item.cantidad || 0).toString(), colCant, currentY, { width: 35, align: 'right' });
+      doc.text(`$${precio.toFixed(2)}`, colPrecio, currentY, { width: 40, align: 'right' });
+      doc.text('$0.00', colSubsidio, currentY, { width: 40, align: 'right' });
+      doc.text(`$${precio.toFixed(2)}`, colSinSub, currentY, { width: 40, align: 'right' });
+      doc.text(`$${descuento.toFixed(2)}`, colDescVal, currentY, { width: 30, align: 'right' });
+      doc.text(`$${subtotal.toFixed(2)}`, colTotal, currentY, { width: 35, align: 'right' });
 
       currentY += rowHeight;
     });
@@ -302,5 +347,73 @@ export class PdfGeneratorService {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = d.getFullYear();
     return `${day}/${month}/${year}`;
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private formatDateTime(date: string | Date): string {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  }
+
+  private getAmbienteFromClave(clave?: string): string {
+    if (!clave || clave.length < 24) return 'N/A';
+    const ambiente = clave.charAt(23);
+    if (ambiente === '2') return 'PRODUCCION';
+    if (ambiente === '1') return 'PRUEBAS';
+    return 'N/A';
+  }
+
+  private getFormaPagoNombre(codigo?: string): string {
+    const map: Record<string, string> = {
+      '01': 'SIN UTILIZACION DEL SISTEMA FINANCIERO',
+      '15': 'COMPENSACION DE DEUDAS',
+      '16': 'TARJETA DE DEBITO',
+      '17': 'DINERO ELECTRONICO',
+      '18': 'TARJETA PREPAGO',
+      '19': 'TARJETA DE CREDITO',
+      '20': 'OTROS CON UTILIZACION DEL SISTEMA FINANCIERO',
+    };
+    if (!codigo) return '-';
+    return map[codigo] || codigo;
+  }
+
+  private async generateBarcode(text: string): Promise<Buffer | null> {
+    if (!text || text === 'N/A' || text.length < 49) {
+      this.logger.warn(`Codigo de barras no generado. Texto invalido o longitud < 49: ${text?.length || 0}`);
+      return null;
+    }
+    try {
+      this.logger.log(`Generando codigo de barras para clave: ${text.substring(0, 10)}...`);
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const bwipjs = require('bwip-js');
+      const buffer = await bwipjs.toBuffer({
+        bcid: 'code128',
+        text,
+        scale: 3,
+        height: 12,
+        includetext: false,
+        backgroundcolor: 'ffffff',
+      });
+      this.logger.log(`✅ Codigo de barras generado exitosamente (${buffer.length} bytes)`);
+      return buffer;
+    } catch (error) {
+      this.logger.error(`❌ Error generando codigo de barras: ${error.message}`);
+      this.logger.error(`Stack: ${error.stack}`);
+      return null;
+    }
   }
 }

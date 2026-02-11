@@ -105,35 +105,21 @@ export class InvoicingController {
     try {
       const invoice = await this.invoicingService.findOne(id);
 
-      // Si no tiene PDF, generarlo ahora
-      if (!invoice.rutaPdfRide) {
+      let pdfPath = invoice.rutaPdfRide;
+
+      // Si no tiene PDF o no existe en disco, generarlo ahora
+      if (!pdfPath || !(await this.fileExists(pdfPath))) {
         const invoiceWithPdf = await this.invoicingService.generatePdfForInvoice(id);
-        if (!invoiceWithPdf.rutaPdfRide) {
+        pdfPath = invoiceWithPdf.rutaPdfRide;
+        if (!pdfPath || !(await this.fileExists(pdfPath))) {
           throw new BadRequestException('No se pudo generar el PDF para esta factura');
         }
-        
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="factura_${invoice.numeroFactura}.pdf"`);
-
-        const fileStream = require('fs').createReadStream(invoiceWithPdf.rutaPdfRide);
-        fileStream.pipe(res);
-        return;
-      }
-
-      // Verificar que el archivo existe
-      const fileExists = await fs
-        .access(invoice.rutaPdfRide)
-        .then(() => true)
-        .catch(() => false);
-
-      if (!fileExists) {
-        throw new BadRequestException('El archivo PDF no existe en el servidor');
       }
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="factura_${invoice.numeroFactura}.pdf"`);
 
-      const fileStream = require('fs').createReadStream(invoice.rutaPdfRide);
+      const fileStream = require('fs').createReadStream(pdfPath);
       fileStream.pipe(res);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -156,6 +142,16 @@ export class InvoicingController {
       res.send(invoice.xmlGenerado);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  }
+
+  private async fileExists(filePath?: string) {
+    if (!filePath) return false;
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
     }
   }
 

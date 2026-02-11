@@ -33,10 +33,13 @@
     "@nestjs/mapped-types": "^2.1.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.13",
+    "@nestjs/websockets": "^11.1.13",
     "@prisma/client": "^4.16.1",
     "@types/pdfkit": "^0.17.4",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
+    "bwip-js": "^4.6.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "form-data": "^4.0.5",
@@ -47,6 +50,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3",
     "xmlbuilder2": "^3.1.1"
   },
   "devDependencies": {

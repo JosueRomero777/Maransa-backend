@@ -235,17 +235,25 @@ export class InvoicingService {
       {
         id: invoice.id.toString(),
         numeroDocumento: invoice.numeroFactura,
+        numeroAutorizacion: invoice.numeroAutorizacion || undefined,
+        fechaAutorizacion: invoice.fechaAutorizacion ? invoice.fechaAutorizacion.toISOString() : undefined,
+        ambiente: config.ambienteSRI,
+        emision: config.tipoEmision,
         fecha: invoice.fechaEmision.toISOString(),
         claveAcceso: claveAcceso || '',
         razonSocial: config.razonSocial,
         ruc: config.ruc,
         direccion: config.direccionMatriz,
-        email: undefined,
+        telefono: invoice.packager?.contact_phone || undefined,
+        email: invoice.packager?.contact_email || undefined,
+        clienteEmail: invoice.emailComprador || undefined,
+        clienteTelefono: invoice.packager?.contact_phone || undefined,
         clienteNombre: invoice.razonSocialComprador || 'Consumidor Final',
         clienteRuc: invoice.identificacionComprador || 'Consumidor Final',
         clienteDireccion: invoice.packager?.location || invoice.direccionComprador || '',
         detalles: invoice.detalles.map((d) => ({
           codigo: d.codigoPrincipal || d.codigoAuxiliar || '',
+          codigoAuxiliar: d.codigoAuxiliar || undefined,
           descripcion: d.descripcion,
           cantidad: d.cantidad,
           precioUnitario: d.precioUnitario,
@@ -333,22 +341,89 @@ export class InvoicingService {
     try {
       this.logger.log(`Iniciando firma y autorización de factura ${invoice.numeroFactura}`);
 
-      // Paso 1: Firmar XML con FIRMA_SRI_3_API
-      const firmaResult = await this.sriSignature.firmarYAutorizarXml(
-        invoice.xmlGenerado,
-        config.rutaCertificado || '',
-        config.claveCertificado || '',
-        'factura',
-        config.urlFirmaService,
-      );
+      let firmaResult: any;
+      let isProcessing = false;
 
-      // Paso 2: Guardar XML firmado
+      // Paso 1: Firmar y enviar XML al SRI
+      try {
+        firmaResult = await this.sriSignature.firmarYAutorizarXml(
+          invoice.xmlGenerado,
+          config.rutaCertificado || '',
+          config.claveCertificado || '',
+          'factura',
+          config.urlFirmaService,
+        );
+      } catch (error: any) {
+        // Verificar si el error es "EN PROCESAMIENTO"
+        if (error.message && error.message.includes('CLAVE DE ACCESO EN PROCESAMIENTO')) {
+          this.logger.log('⏳ Comprobante aceptado por el SRI y está en procesamiento');
+          this.logger.log('🔄 Consultando estado cada 3-5 segundos hasta obtener autorización...');
+          isProcessing = true;
+        } else {
+          throw error;
+        }
+      }
+
+      // Paso 2: Si está en procesamiento, hacer polling hasta obtener autorización
+      if (isProcessing && invoice.claveAcceso) {
+        const maxRetries = 5;
+        let retryCount = 0;
+        let authorized = false;
+
+        while (retryCount < maxRetries && !authorized) {
+          retryCount++;
+          
+          // Esperar antes de consultar (3 segundos primer intento, 5 después)
+          const waitTime = retryCount === 1 ? 3000 : 5000;
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          this.logger.log(`📋 Intento ${retryCount}/${maxRetries}: Consultando autorización...`);
+
+          try {
+            const consultaResult = await this.sriSignature.consultarAutorizacion(
+              invoice.claveAcceso,
+              config.urlFirmaService,
+            );
+
+            if (consultaResult.estado === 'AUTORIZADO' && consultaResult.xmlAutorizado) {
+              this.logger.log('✅ ¡Comprobante AUTORIZADO por el SRI!');
+              firmaResult = {
+                xmlFirmado: consultaResult.xmlAutorizado,
+                numeroAutorizacion: consultaResult.numeroAutorizacion,
+                fechaAutorizacion: consultaResult.fechaAutorizacion,
+                estado: 'AUTORIZADO',
+              };
+              authorized = true;
+            } else if (consultaResult.estado === 'NO AUTORIZADO' || consultaResult.estado === 'RECHAZADO') {
+              const mensajes = JSON.stringify(consultaResult.mensajes || []);
+              throw new BadRequestException(`Comprobante rechazado por el SRI: ${mensajes}`);
+            } else {
+              this.logger.log(`⏳ Estado: ${consultaResult.estado}, esperando...`);
+            }
+          } catch (consultaError: any) {
+            if (retryCount === maxRetries) {
+              throw new BadRequestException(
+                `No se pudo obtener autorización después de ${maxRetries} intentos. El comprobante sigue en procesamiento. Puede consultar manualmente más tarde con la clave de acceso: ${invoice.claveAcceso}`
+              );
+            }
+            this.logger.warn(`⚠️ Error en consulta (intento ${retryCount}): ${consultaError.message}`);
+          }
+        }
+
+        if (!authorized) {
+          throw new BadRequestException(
+            `El comprobante sigue EN PROCESAMIENTO después de ${maxRetries} intentos. Consulte más tarde con la clave: ${invoice.claveAcceso}`
+          );
+        }
+      }
+
+      // Paso 3: Guardar XML firmado
       const xmlDir = path.join(process.cwd(), 'storage', 'invoices', 'xml');
       await fs.mkdir(xmlDir, { recursive: true });
       const xmlFirmadoPath = path.join(xmlDir, `factura_${invoice.id}_firmado_${Date.now()}.xml`);
       await fs.writeFile(xmlFirmadoPath, firmaResult.xmlFirmado, 'utf-8');
 
-      // Paso 3: Generar PDF (RIDE)
+      // Paso 4: Generar PDF (RIDE)
       const pdfDir = path.join(process.cwd(), 'storage', 'invoices', 'pdf');
       await fs.mkdir(pdfDir, { recursive: true });
       const pdfPath = path.join(pdfDir, `factura_${invoice.id}_${Date.now()}.pdf`);
@@ -357,17 +432,25 @@ export class InvoicingService {
         {
           id: invoice.id.toString(),
           numeroDocumento: invoice.numeroFactura,
+          numeroAutorizacion: firmaResult.numeroAutorizacion,
+          fechaAutorizacion: firmaResult.fechaAutorizacion,
+          ambiente: config.ambienteSRI,
+          emision: config.tipoEmision,
           fecha: invoice.fechaEmision.toISOString(),
           claveAcceso: invoice.claveAcceso || '',
           razonSocial: config.razonSocial,
           ruc: config.ruc,
           direccion: config.direccionMatriz,
-          email: undefined,
+          telefono: invoice.packager?.contact_phone || undefined,
+          email: invoice.packager?.contact_email || undefined,
+          clienteEmail: invoice.emailComprador || undefined,
+          clienteTelefono: invoice.packager?.contact_phone || undefined,
           clienteNombre: invoice.packager?.name || invoice.razonSocialComprador || 'Consumidor Final',
           clienteRuc: invoice.packager?.ruc || invoice.identificacionComprador || 'Consumidor Final',
           clienteDireccion: invoice.packager?.location || invoice.direccionComprador || '',
           detalles: invoice.detalles.map((d) => ({
             codigo: d.codigoPrincipal || d.codigoAuxiliar || '',
+            codigoAuxiliar: d.codigoAuxiliar || undefined,
             descripcion: d.descripcion,
             cantidad: d.cantidad,
             precioUnitario: d.precioUnitario,
@@ -390,7 +473,7 @@ export class InvoicingService {
         pdfPath,
       );
 
-      // Paso 4: Actualizar factura con datos de autorización
+      // Paso 5: Actualizar factura con datos de autorización
       const updatedInvoice = await this.prisma.invoice.update({
         where: { id },
         data: {
@@ -414,7 +497,7 @@ export class InvoicingService {
 
       return updatedInvoice;
     } catch (error: any) {
-      this.logger.error(`Error en firma y autorización: ${error.message}`);
+      this.logger.error(`❌ Error en firma y autorización: ${error.message}`);
       throw new BadRequestException(`Error en firma: ${error.message}`);
     }
   }
@@ -446,17 +529,25 @@ export class InvoicingService {
         {
           id: invoice.id.toString(),
           numeroDocumento: invoice.numeroFactura,
+          numeroAutorizacion: invoice.numeroAutorizacion || undefined,
+          fechaAutorizacion: invoice.fechaAutorizacion ? invoice.fechaAutorizacion.toISOString() : undefined,
+          ambiente: config.ambienteSRI,
+          emision: config.tipoEmision,
           fecha: invoice.fechaEmision.toISOString(),
           claveAcceso: invoice.claveAcceso || '',
           razonSocial: config.razonSocial,
           ruc: config.ruc,
           direccion: config.direccionMatriz,
-          email: undefined,
+          telefono: invoice.packager?.contact_phone || undefined,
+          email: invoice.packager?.contact_email || undefined,
+          clienteEmail: invoice.emailComprador || undefined,
+          clienteTelefono: invoice.packager?.contact_phone || undefined,
           clienteNombre: invoice.packager?.name || invoice.razonSocialComprador || 'Consumidor Final',
           clienteRuc: invoice.packager?.ruc || invoice.identificacionComprador || 'Consumidor Final',
           clienteDireccion: invoice.packager?.location || invoice.direccionComprador || '',
           detalles: invoice.detalles.map((d) => ({
             codigo: d.codigoPrincipal || d.codigoAuxiliar || '',
+            codigoAuxiliar: d.codigoAuxiliar || undefined,
             descripcion: d.descripcion,
             cantidad: d.cantidad,
             precioUnitario: d.precioUnitario,

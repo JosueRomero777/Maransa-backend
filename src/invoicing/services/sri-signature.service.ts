@@ -1,35 +1,25 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import axios, { AxiosInstance } from 'axios';
-import * as FormData from 'form-data';
-import * as fs from 'fs/promises';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import axios from 'axios';
 
 @Injectable()
 export class SriSignatureService {
   private readonly logger = new Logger(SriSignatureService.name);
-  private axiosInstance: AxiosInstance;
-
-  constructor() {
-    this.axiosInstance = axios.create({
-      timeout: 30000,
-      maxContentLength: 50 * 1024 * 1024, // 50MB
-    });
-  }
 
   /**
-   * Envía un XML al microservicio de firma para ser firmado y autorizado por el SRI
-   * @param xmlContent Contenido del XML a firmar
-   * @param certificadoPath Ruta al archivo .p12 del certificado
+   * Firma y autoriza un XML ante el SRI
+   * @param xml XML a firmar
+   * @param rutaCertificado Ruta al certificado digital .p12
    * @param claveCertificado Contraseña del certificado
-   * @param tipoDocumento Tipo de documento (factura, notaCredito, etc)
-   * @param urlFirmaService URL del microservicio de firma
-   * @returns XML firmado y autorizado
+   * @param tipoDocumento Tipo de documento (factura, notaCredito, etc.)
+   * @param urlFirmaService URL del servicio de firma
+   * @returns Resultado con XML firmado, número y fecha de autorización
    */
   async firmarYAutorizarXml(
-    xmlContent: string,
-    certificadoPath: string,
+    xml: string,
+    rutaCertificado: string,
     claveCertificado: string,
-    tipoDocumento: string = 'factura',
-    urlFirmaService: string = 'http://localhost:9000',
+    tipoDocumento: string,
+    urlFirmaService: string,
   ): Promise<{
     xmlFirmado: string;
     numeroAutorizacion: string;
@@ -37,86 +27,99 @@ export class SriSignatureService {
     estado: string;
   }> {
     try {
-      this.logger.debug(`Iniciando firma de ${tipoDocumento} en ${urlFirmaService}`);
+      this.logger.log(`Enviando ${tipoDocumento} al servicio de firma: ${urlFirmaService}`);
 
-      // Verificar que el archivo del certificado existe
-      const certExists = await this.fileExists(certificadoPath);
-      if (!certExists) {
-        throw new BadRequestException(`Certificado no encontrado en: ${certificadoPath}`);
-      }
+      const response = await axios.post(
+        `${urlFirmaService}/api/firmar-autorizar`,
+        {
+          xml,
+          certificadoPath: rutaCertificado,
+          certificadoPassword: claveCertificado,
+          tipoDocumento,
+        },
+        {
+          timeout: 30000, // 30 segundos
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-      // Crear FormData con los archivos y parámetros
-      const form = new FormData();
-
-      // Agregar XML como string (no como archivo)
-      form.append('archivo_xml', Buffer.from(xmlContent), {
-        filename: `factura_${Date.now()}.xml`,
-        contentType: 'application/xml',
-      });
-
-      // Agregar certificado como archivo
-      const certData = await fs.readFile(certificadoPath);
-      form.append('certificado_p12', certData, {
-        filename: 'certificado.p12',
-        contentType: 'application/x-pkcs12',
-      });
-
-      // Agregar parámetros
-      form.append('clave_certificado', claveCertificado);
-      form.append('tipo_documento', tipoDocumento);
-
-      // Realizar la solicitud POST
-      const endpoint = `${urlFirmaService}/api/facturacion/procesar`;
-      this.logger.debug(`Enviando XML a: ${endpoint}`);
-
-      const response = await this.axiosInstance.post(endpoint, form, {
-        headers: form.getHeaders(),
-      });
-
-      if (!response.data.success) {
+      if (response.data.success) {
+        this.logger.log(`✅ ${tipoDocumento} firmado y autorizado exitosamente`);
+        return {
+          xmlFirmado: response.data.xmlFirmado,
+          numeroAutorizacion: response.data.numeroAutorizacion,
+          fechaAutorizacion: response.data.fechaAutorizacion,
+          estado: response.data.estado || 'AUTORIZADO',
+        };
+      } else {
         throw new BadRequestException(
-          `Error del servicio de firma: ${response.data.error?.message || 'Error desconocido'}`,
+          `Error en firma/autorización: ${response.data.message || 'Error desconocido'}`,
         );
       }
-
-      this.logger.log(`✅ XML firmado exitosamente. Autorización: ${response.data.data.numero_autorizacion}`);
-
-      return {
-        xmlFirmado: response.data.data.documento_firmado,
-        numeroAutorizacion: response.data.data.numero_autorizacion,
-        fechaAutorizacion: response.data.data.fecha_autorizacion,
-        estado: 'AUTORIZADO',
-      };
     } catch (error: any) {
-      this.logger.error(`Error en firma: ${error.message}`);
-
-      if (error.response?.status === 400) {
-        throw new BadRequestException(`Error de validación: ${error.response.data?.error?.message}`);
+      if (error.response?.data?.message) {
+        // Si el error indica que está en procesamiento, propagarlo
+        if (error.response.data.message.includes('EN PROCESAMIENTO')) {
+          throw new BadRequestException(`CLAVE DE ACCESO EN PROCESAMIENTO: ${error.response.data.claveAcceso}`);
+        }
+        throw new BadRequestException(`Error SRI: ${error.response.data.message}`);
       }
 
       if (error.code === 'ECONNREFUSED') {
         throw new BadRequestException(
-          `No se puede conectar al servicio de firma en ${urlFirmaService}. ¿Está ejecutándose?`,
+          `No se pudo conectar al servicio de firma en ${urlFirmaService}. Verifique que el servicio esté activo.`,
         );
       }
 
-      if (error.code === 'ETIMEDOUT') {
-        throw new BadRequestException('Timeout al conectar con el servicio de firma');
-      }
-
-      throw new BadRequestException(`Error en firma de XML: ${error.message}`);
+      this.logger.error(`Error firmando XML: ${error.message}`);
+      throw new BadRequestException(`Error al firmar documento: ${error.message}`);
     }
   }
 
   /**
-   * Verifica si un archivo existe
+   * Consulta el estado de autorización de un comprobante en el SRI
+   * @param claveAcceso Clave de acceso del comprobante
+   * @param urlFirmaService URL del servicio de firma
+   * @returns Estado y XML autorizado si está disponible
    */
-  private async fileExists(path: string): Promise<boolean> {
+  async consultarAutorizacion(
+    claveAcceso: string,
+    urlFirmaService: string,
+  ): Promise<{
+    estado: string;
+    xmlAutorizado?: string;
+    numeroAutorizacion?: string;
+    fechaAutorizacion?: string;
+    mensajes?: any[];
+  }> {
     try {
-      await fs.access(path);
-      return true;
-    } catch {
-      return false;
+      this.logger.log(`Consultando autorización para clave: ${claveAcceso}`);
+
+      const response = await axios.get(
+        `${urlFirmaService}/api/consultar-autorizacion/${claveAcceso}`,
+        {
+          timeout: 15000, // 15 segundos
+        },
+      );
+
+      return {
+        estado: response.data.estado,
+        xmlAutorizado: response.data.xmlAutorizado,
+        numeroAutorizacion: response.data.numeroAutorizacion,
+        fechaAutorizacion: response.data.fechaAutorizacion,
+        mensajes: response.data.mensajes || [],
+      };
+    } catch (error: any) {
+      if (error.code === 'ECONNREFUSED') {
+        throw new BadRequestException(
+          `No se pudo conectar al servicio de firma en ${urlFirmaService}`,
+        );
+      }
+
+      this.logger.error(`Error consultando autorización: ${error.message}`);
+      throw new BadRequestException(`Error al consultar autorización: ${error.message}`);
     }
   }
 }

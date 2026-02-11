@@ -36,10 +36,16 @@ export class OrderFilterDto {
   limit?: number = 10;
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    return value === 'true' || value === '1';
+  })
   includeRelations?: boolean = false;
 
   @IsOptional()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    return value === 'true' || value === '1';
+  })
   withoutReception?: boolean = false;
 }

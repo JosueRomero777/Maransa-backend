@@ -31,6 +31,9 @@ export class InvoicingSeederService {
         secuencialRetencion: 1,
         ambienteSRI: 'PRUEBAS',
         tipoEmision: 'NORMAL',
+        rutaCertificado: 'certificates/firma-convertido.p12',
+        claveCertificado: 'ADRI4189',
+        urlFirmaService: 'http://localhost:8001',
         activo: true,
       },
     });
