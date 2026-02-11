@@ -4,6 +4,7 @@ import { RolUsuario, TipoProveedor } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { seedPriceEstimationData } from './price-estimation.seed';
 import { InvoicingSeederService } from './invoicing-seeder.service';
+import { ThesisSeederService } from './thesis-seeder.service';
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
@@ -12,14 +13,16 @@ export class SeederService implements OnApplicationBootstrap {
   constructor(
     private prisma: PrismaService,
     private invoicingSeeder: InvoicingSeederService,
-  ) {}
+    private thesisSeeder: ThesisSeederService,
+  ) { }
 
   async onApplicationBootstrap() {
     await this.seedAdminUser();
-    await this.seedProviders();
-    await this.seedPackagers();
+    // await this.seedProviders(); // Desactivado: usar solo datos de tesis
+    // await this.seedPackagers(); // Desactivado: usar solo datos de tesis
     await this.seedPriceEstimationModule();
     await this.invoicingSeeder.seed();
+    await this.thesisSeeder.seed(); // Seed de datos específicos de tesis
   }
 
   public async seedAdminUser() {
@@ -71,7 +74,7 @@ export class SeederService implements OnApplicationBootstrap {
   public async seedProviders() {
     try {
       const existingProviders = await this.prisma.provider.findMany();
-      
+
       if (existingProviders.length > 0) {
         this.logger.log('Proveedores ya existen');
         return;
@@ -235,7 +238,7 @@ export class SeederService implements OnApplicationBootstrap {
       // Verificar si ya existen datos del módulo de estimaciones
       const existingFormulas = await this.prisma.priceFormula.findMany();
       const existingMarketFactors = await this.prisma.marketFactor.findMany();
-      
+
       if (existingFormulas.length > 0 && existingMarketFactors.length > 0) {
         this.logger.log('El módulo de estimaciones de precios ya tiene datos');
         return;

@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") 
+  url      = env("DATABASE_URL")
 }
 
 // ===== ENUMS =====
@@ -154,566 +154,566 @@ enum TipoAlgoritmoML {
 
 // Usuarios del sistema
 model User {
-  id          Int         @id @default(autoincrement())
-  email       String      @unique
-  name        String
-  role        RolUsuario
-  password    String
-  active      Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  name      String
+  role      RolUsuario
+  password  String
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   // Relaciones
-  pedidosCreados      Order[]       @relation("CreatedBy")
-  laboratorioAnalisis Laboratory[]  @relation("AnalistaLaboratorio")
-  logisticaAsignada   Logistics[]   @relation("LogisticaAssigned")
-  custodiaAsignada    Custody[]     @relation("CustodiaAssigned")
-  cosechaAsignada     Harvest[]     @relation("HarvestAssigned")
-  bitacoraEventos     EventLog[]    @relation("UserEventLog")
+  pedidosCreados      Order[]      @relation("CreatedBy")
+  laboratorioAnalisis Laboratory[] @relation("AnalistaLaboratorio")
+  logisticaAsignada   Logistics[]  @relation("LogisticaAssigned")
+  custodiaAsignada    Custody[]    @relation("CustodiaAssigned")
+  cosechaAsignada     Harvest[]    @relation("HarvestAssigned")
+  bitacoraEventos     EventLog[]   @relation("UserEventLog")
 
   @@map("users")
 }
 
 // Proveedores (expandido)
 model Provider {
-  id                    Int             @id @default(autoincrement())
-  name                  String          @unique
-  type                  TipoProveedor
-  location              String
-  capacity              Int
-  contact_whatsapp      String
-  contact_email         String?
-  contact_phone         String?
-  notes                 String?
-  active                Boolean         @default(true)
-  
+  id               Int           @id @default(autoincrement())
+  name             String        @unique
+  type             TipoProveedor
+  location         String
+  capacity         Int
+  contact_whatsapp String
+  contact_email    String?
+  contact_phone    String?
+  notes            String?
+  active           Boolean       @default(true)
+
   // Información comercial adicional (nuevos campos)
   condicionesComerciales String?
-  puntualidadPromedio   Float?          @default(0.0)
-  confiabilidadPromedio Float?          @default(0.0)
-  
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  puntualidadPromedio    Float?  @default(0.0)
+  confiabilidadPromedio  Float?  @default(0.0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  pedidos               Order[]
-  historialPrecios      PriceHistory[]
-  calidad               ProviderQuality?
-  pagosRealizados       ProviderPayment[]
+  pedidos          Order[]
+  historialPrecios PriceHistory[]
+  calidad          ProviderQuality?
+  pagosRealizados  ProviderPayment[]
 
   @@map("Provider")
 }
 
 // Empacadoras
 model Packager {
-  id                Int       @id @default(autoincrement())
-  name              String    @unique
-  location          String
-  contact_email     String?
-  contact_phone     String?
-  contact_whatsapp  String?
-  ruc               String?   @unique
-  active            Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id               Int      @id @default(autoincrement())
+  name             String   @unique
+  location         String
+  contact_email    String?
+  contact_phone    String?
+  contact_whatsapp String?
+  ruc              String?  @unique
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // Relaciones
-  pedidos           Order[]
-  facturas          Invoice[]
-  pagosRecibidos    Payment[]
-  historialPrecios  PriceHistory[]
+  pedidos          Order[]
+  facturas         Invoice[]
+  pagosRecibidos   Payment[]
+  historialPrecios PriceHistory[]
 
   @@map("packagers")
 }
 
 // Pedidos principales
 model Order {
-  id                    Int               @id @default(autoincrement())
-  codigo                String            @unique // Código único del pedido
-  
+  id     Int    @id @default(autoincrement())
+  codigo String @unique // Código único del pedido
+
   // Referencias
-  providerId            Int
-  packagerId            Int?
-  createdById           Int
-  
+  providerId  Int
+  packagerId  Int?
+  createdById Int
+
   // Información del producto
-  presentationTypeId    Int?              // Tipo de presentación (Vivo, con cabeza, sin cabeza, pelado)
-  shrimpSizeId          Int?              // Talla específica del camarón
-  cantidadEstimada      Float             // Libras estimadas
-  cantidadPedida        Float             // Libras solicitadas inicialmente
-  cantidadFinal         Float?            // Libras definitivas
-  
+  presentationTypeId Int? // Tipo de presentación (Vivo, con cabeza, sin cabeza, pelado)
+  shrimpSizeId       Int? // Talla específica del camarón
+  cantidadEstimada   Float // Libras estimadas
+  cantidadPedida     Float // Libras solicitadas inicialmente
+  cantidadFinal      Float? // Libras definitivas
+
   // Fechas
-  fechaTentativaCosecha DateTime?
+  fechaTentativaCosecha  DateTime?
   fechaDefinitivaCosecha DateTime?
-  fechaEntregaEstimada  DateTime?
-  fechaCreacion         DateTime          @default(now())
-  fechaActualizacion    DateTime          @updatedAt
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  
+  fechaEntregaEstimada   DateTime?
+  fechaCreacion          DateTime  @default(now())
+  fechaActualizacion     DateTime  @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
   // Estado y precios
-  estado                EstadoPedido      @default(CREADO)
-  precioEstimadoCompra  Float?
-  precioRealCompra      Float?
-  precioEstimadoVenta   Float?
-  precioRealVenta       Float?
-  
+  estado               EstadoPedido @default(CREADO)
+  precioEstimadoCompra Float?
+  precioRealCompra     Float?
+  precioEstimadoVenta  Float?
+  precioRealVenta      Float?
+
   // Condiciones comerciales
-  condicionesIniciales  String?
-  observaciones         String?
+  condicionesIniciales String?
+  observaciones        String?
 
   // Relaciones
-  provider              Provider          @relation(fields: [providerId], references: [id])
-  packager              Packager?         @relation(fields: [packagerId], references: [id])
-  createdBy             User              @relation("CreatedBy", fields: [createdById], references: [id])
-  presentationType      PresentationType? @relation(fields: [presentationTypeId], references: [id])
-  shrimpSize            ShrimpSize?       @relation(fields: [shrimpSizeId], references: [id])
-  
-  laboratorio           Laboratory?
-  logistica             Logistics?
-  custodia              Custody?
-  cosecha               Harvest?
-  recepcion             Reception?
-  facturas              Invoice[]
-  pagosProveedor        ProviderPayment[]
-  eventLog              EventLog[]
-  notificaciones        Notification[]
-  estimaciones          PriceEstimation[]
+  provider         Provider          @relation(fields: [providerId], references: [id])
+  packager         Packager?         @relation(fields: [packagerId], references: [id])
+  createdBy        User              @relation("CreatedBy", fields: [createdById], references: [id])
+  presentationType PresentationType? @relation(fields: [presentationTypeId], references: [id])
+  shrimpSize       ShrimpSize?       @relation(fields: [shrimpSizeId], references: [id])
+
+  laboratorio    Laboratory?
+  logistica      Logistics?
+  custodia       Custody?
+  cosecha        Harvest?
+  recepcion      Reception?
+  facturas       Invoice[]
+  pagosProveedor ProviderPayment[]
+  eventLog       EventLog[]
+  notificaciones Notification[]
+  estimaciones   PriceEstimation[]
 
   @@map("orders")
 }
 
 // Módulo de Laboratorio
 model Laboratory {
-  id                    Int                 @id @default(autoincrement())
-  orderId               Int                 @unique
-  analistaId            Int
-  
-  estado                EstadoLaboratorio   @default(PENDIENTE)
-  fechaAnalisis         DateTime            @default(now())
-  fechaReevaluacion     DateTime?
-  
+  id         Int @id @default(autoincrement())
+  orderId    Int @unique
+  analistaId Int
+
+  estado            EstadoLaboratorio @default(PENDIENTE)
+  fechaAnalisis     DateTime          @default(now())
+  fechaReevaluacion DateTime?
+
   // Resultados
-  resultadoGeneral      String?             // Descripción general
-  parametrosQuimicos    Json?               // Datos estructurados de análisis
-  observaciones         String?
-  motivoRechazo         String?
-  
+  resultadoGeneral   String? // Descripción general
+  parametrosQuimicos Json? // Datos estructurados de análisis
+  observaciones      String?
+  motivoRechazo      String?
+
   // Archivos adjuntos
-  archivosAdjuntos      String[]            // URLs de PDFs, imágenes
-  
+  archivosAdjuntos String[] // URLs de PDFs, imágenes
+
   // Características organolépticas
-  olor                  String?
-  sabor                 String?
-  textura               String?
-  apariencia            String?
-  
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  olor       String?
+  sabor      String?
+  textura    String?
+  apariencia String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  order                 Order               @relation(fields: [orderId], references: [id])
-  analista              User                @relation("AnalistaLaboratorio", fields: [analistaId], references: [id])
+  order    Order @relation(fields: [orderId], references: [id])
+  analista User  @relation("AnalistaLaboratorio", fields: [analistaId], references: [id])
 
   @@map("laboratory_analysis")
 }
 
 // Módulo de Logística
 model Logistics {
-  id                    Int               @id @default(autoincrement())
-  orderId               Int               @unique
-  assignedUserId        Int?
-  
-  estado                EstadoLogistica   @default(PENDIENTE)
-  fechaAsignacion       DateTime?
-  fechaInicio           DateTime?
-  fechaFinalizacion     DateTime?
-  
+  id             Int  @id @default(autoincrement())
+  orderId        Int  @unique
+  assignedUserId Int?
+
+  estado            EstadoLogistica @default(PENDIENTE)
+  fechaAsignacion   DateTime?
+  fechaInicio       DateTime?
+  fechaFinalizacion DateTime?
+
   // Vehículos y recursos
-  vehiculoAsignado      String?
-  choferAsignado        String?
-  recursosUtilizados    Json?             // vines, tanques, oxígeno, etc.
-  
+  vehiculoAsignado   String?
+  choferAsignado     String?
+  recursosUtilizados Json? // vines, tanques, oxígeno, etc.
+
   // Ubicaciones
-  ubicacionOrigen       String?
-  ubicacionDestino      String?
-  rutaPlanificada       String?
-  
+  ubicacionOrigen  String?
+  ubicacionDestino String?
+  rutaPlanificada  String?
+
   // Coordenadas para mapas
-  origenLat             Float?
-  origenLng             Float?
-  destinoLat            Float?
-  destinoLng            Float?
-  
+  origenLat  Float?
+  origenLng  Float?
+  destinoLat Float?
+  destinoLng Float?
+
   // Seguimiento en tiempo real
-  trackingActivo        Boolean           @default(false)
-  ubicacionActualLat    Float?
-  ubicacionActualLng    Float?
-  ultimaActualizacion   DateTime?
-  historialUbicaciones  Json?             // Array de {lat, lng, timestamp}
-  
+  trackingActivo       Boolean   @default(false)
+  ubicacionActualLat   Float?
+  ubicacionActualLng   Float?
+  ultimaActualizacion  DateTime?
+  historialUbicaciones Json? // Array de {lat, lng, timestamp}
+
   // Sesión de tracking (solo 1 rastreador activo)
-  usuarioTrackingActivo Int?              // ID del único usuario que está rastreando
-  sessionIdTracking     String?           // ID único de la sesión
-  fechaInicioTracking   DateTime?         // Cuándo comenzó el tracking
-  fechaCierreTracking   DateTime?         // Cuándo terminó el tracking
-  
+  usuarioTrackingActivo Int? // ID del único usuario que está rastreando
+  sessionIdTracking     String? // ID único de la sesión
+  fechaInicioTracking   DateTime? // Cuándo comenzó el tracking
+  fechaCierreTracking   DateTime? // Cuándo terminó el tracking
+
   // Evidencias
-  evidenciasCarga       String[]          // URLs de fotos/documentos
-  evidenciasTransporte  String[]
-  
-  observaciones         String?
-  incidentes            String?
-  
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  evidenciasCarga      String[] // URLs de fotos/documentos
+  evidenciasTransporte String[]
+
+  observaciones String?
+  incidentes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  order                 Order             @relation(fields: [orderId], references: [id])
-  assignedUser          User?             @relation("LogisticaAssigned", fields: [assignedUserId], references: [id])
-  custodia              Custody?
+  order        Order    @relation(fields: [orderId], references: [id])
+  assignedUser User?    @relation("LogisticaAssigned", fields: [assignedUserId], references: [id])
+  custodia     Custody?
 
   @@map("logistics")
 }
 
 // Módulo de Custodia
 model Custody {
-  id                    Int         @id @default(autoincrement())
-  orderId               Int         @unique
-  logisticsId           Int         @unique
-  assignedUserId        Int?
-  
-  estado                EstadoCustodia @default(PENDIENTE)
-  
+  id             Int  @id @default(autoincrement())
+  orderId        Int  @unique
+  logisticsId    Int  @unique
+  assignedUserId Int?
+
+  estado EstadoCustodia @default(PENDIENTE)
+
   // Fechas importantes
-  fechaAsignacion       DateTime    @default(now())
-  fechaInicio           DateTime?
-  fechaFinalizacion     DateTime?
-  
+  fechaAsignacion   DateTime  @default(now())
+  fechaInicio       DateTime?
+  fechaFinalizacion DateTime?
+
   // Personal y recursos
-  personalAsignado      Json?       // Array de personal asignado
-  vehiculoCustodia      String?
-  rutaCustodia          String?
+  personalAsignado Json? // Array de personal asignado
+  vehiculoCustodia String?
+  rutaCustodia     String?
 
   // Seguimiento en tiempo real (custodia)
-  trackingActivo        Boolean     @default(false)
-  ubicacionActualLat    Float?
-  ubicacionActualLng    Float?
-  ultimaActualizacion   DateTime?
-  historialUbicaciones  Json?       // Array de {lat, lng, timestamp}
+  trackingActivo       Boolean   @default(false)
+  ubicacionActualLat   Float?
+  ubicacionActualLng   Float?
+  ultimaActualizacion  DateTime?
+  historialUbicaciones Json? // Array de {lat, lng, timestamp}
 
   // Sesion de tracking (solo 1 rastreador activo)
   usuarioTrackingActivo Int?
   sessionIdTracking     String?
   fechaInicioTracking   DateTime?
   fechaCierreTracking   DateTime?
-  
+
   // Evidencias
-  evidenciasIniciales   Json?       // Array de rutas de archivos iniciales
-  evidenciasFinales     Json?       // Array de rutas de archivos finales
-  
+  evidenciasIniciales Json? // Array de rutas de archivos iniciales
+  evidenciasFinales   Json? // Array de rutas de archivos finales
+
   // Bitácora de ruta
-  incidentes            Json?       // Array de incidentes con detalles
-  
-  observaciones         String?
-  observacionesFinales  String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  incidentes Json? // Array de incidentes con detalles
+
+  observaciones        String?
+  observacionesFinales String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  order                 Order       @relation(fields: [orderId], references: [id])
-  logistics             Logistics   @relation(fields: [logisticsId], references: [id])
-  assignedUser          User?       @relation("CustodiaAssigned", fields: [assignedUserId], references: [id])
+  order        Order     @relation(fields: [orderId], references: [id])
+  logistics    Logistics @relation(fields: [logisticsId], references: [id])
+  assignedUser User?     @relation("CustodiaAssigned", fields: [assignedUserId], references: [id])
 
   @@map("custody")
 }
 
 // Módulo de Definición de Cosecha
 model Harvest {
-  id                    Int         @id @default(autoincrement())
-  orderId               Int         @unique
-  assignedUserId        Int?
-  
-  estado                EstadoCosecha @default(PENDIENTE)
-  
+  id             Int  @id @default(autoincrement())
+  orderId        Int  @unique
+  assignedUserId Int?
+
+  estado EstadoCosecha @default(PENDIENTE)
+
   // Fechas importantes
-  fechaAsignacion       DateTime    @default(now())
-  fechaDefinicion       DateTime?
-  fechaAprobacion       DateTime?
-  fechaRechazo          DateTime?
-  
+  fechaAsignacion DateTime  @default(now())
+  fechaDefinicion DateTime?
+  fechaAprobacion DateTime?
+  fechaRechazo    DateTime?
+
   // Estimación inicial
-  cantidadEstimada      Float?
-  fechaEstimada         DateTime?
-  
+  cantidadEstimada Float?
+  fechaEstimada    DateTime?
+
   // Definición final
-  cantidadFinal         Float?
-  fechaDefinitiva       DateTime?
-  calidadEsperada       String?
-  condicionesCosecha    String?
-  temperaturaOptima     Float?
-  tiempoMaximoTransporte Int?      // En horas
+  cantidadFinal            Float?
+  fechaDefinitiva          DateTime?
+  calidadEsperada          String?
+  condicionesCosecha       String?
+  temperaturaOptima        Float?
+  tiempoMaximoTransporte   Int? // En horas
   requerimientosEspeciales String?
-  
+
   // Evidencias
-  evidenciasIniciales   Json?       // Array de rutas de archivos
-  evidenciasDefinicion  Json?       // Array de rutas de archivos
-  
-  observaciones         String?
-  motivoRechazo         String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  evidenciasIniciales  Json? // Array de rutas de archivos
+  evidenciasDefinicion Json? // Array de rutas de archivos
+
+  observaciones String?
+  motivoRechazo String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  order                 Order       @relation(fields: [orderId], references: [id])
-  assignedUser          User?       @relation("HarvestAssigned", fields: [assignedUserId], references: [id])
+  order        Order @relation(fields: [orderId], references: [id])
+  assignedUser User? @relation("HarvestAssigned", fields: [assignedUserId], references: [id])
 
   @@map("harvest")
 }
 
 // Módulo de Recepción en Empacadora
 model Reception {
-  id                    Int         @id @default(autoincrement())
-  orderId               Int         @unique
-  
-  fechaLlegada          DateTime
-  horaLlegada           String
-  
+  id      Int @id @default(autoincrement())
+  orderId Int @unique
+
+  fechaLlegada DateTime
+  horaLlegada  String
+
   // Validación de recepción
-  pesoRecibido          Float?
-  calidadValidada       Boolean     @default(false)
-  loteAceptado          Boolean     @default(false)
-  motivoRechazo         String?
-  
+  pesoRecibido    Float?
+  calidadValidada Boolean @default(false)
+  loteAceptado    Boolean @default(false)
+  motivoRechazo   String?
+
   // Clasificación final
-  tallasFinales         Json?       // Distribución por tallas
-  clasificacionFinal    String?
-  
+  tallasFinales      Json? // Distribución por tallas
+  clasificacionFinal String?
+
   // Precios finales
-  precioFinalVenta      Float?
-  condicionesVenta      String?
-  
-  observaciones         String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  precioFinalVenta Float?
+  condicionesVenta String?
+
+  observaciones String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  order                 Order       @relation(fields: [orderId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
 
   @@map("reception")
 }
 
 // Módulo de Facturación
 model Invoice {
-  id                    Int               @id @default(autoincrement())
-  numeroFactura         String            @unique // Número secuencial: 001-001-000000001
-  claveAcceso           String?           @unique // Clave de acceso SRI (49 dígitos)
-  
+  id            Int     @id @default(autoincrement())
+  numeroFactura String  @unique // Número secuencial: 001-001-000000001
+  claveAcceso   String? @unique // Clave de acceso SRI (49 dígitos)
+
   // Referencias
-  packagerId            Int
-  orderId               Int?              // Relación con pedido (opcional)
-  
+  packagerId Int
+  orderId    Int? // Relación con pedido (opcional)
+
   // Información del comprobante
-  tipoComprobante       TipoComprobante   @default(FACTURA)
-  estado                EstadoFactura     @default(BORRADOR)
-  
+  tipoComprobante TipoComprobante @default(FACTURA)
+  estado          EstadoFactura   @default(BORRADOR)
+
   // Fechas
-  fechaEmision          DateTime          @default(now())
-  fechaAutorizacion     DateTime?
-  fechaVencimiento      DateTime?         // Para pagos a crédito
-  
+  fechaEmision      DateTime  @default(now())
+  fechaAutorizacion DateTime?
+  fechaVencimiento  DateTime? // Para pagos a crédito
+
   // Montos desglosados por tarifa IVA (SRI Ecuador)
-  subtotalSinImpuestos  Float
-  subtotal0             Float             @default(0)    // 0% exento
-  subtotal5             Float             @default(0)    // 5% reducido
-  subtotal12            Float             @default(0)    // 12% general
-  subtotal14            Float             @default(0)    // 14% especial
-  subtotal15            Float             @default(0)    // 15% especial
-  subtotal20            Float             @default(0)    // 20% especial
-  
+  subtotalSinImpuestos Float
+  subtotal0            Float @default(0) // 0% exento
+  subtotal5            Float @default(0) // 5% reducido
+  subtotal12           Float @default(0) // 12% general
+  subtotal14           Float @default(0) // 14% especial
+  subtotal15           Float @default(0) // 15% especial
+  subtotal20           Float @default(0) // 20% especial
+
   // Impuestos desglosados
-  iva                   Float             @default(0)    // Total IVA
-  ice                   Float             @default(0)    // Impuesto Consumos Especiales
-  irbpnr                Float             @default(0)    // Impuesto Patrimonio
-  rebiius               Float             @default(0)    // Régimen Benéfico
-  total                 Float
-  
+  iva     Float @default(0) // Total IVA
+  ice     Float @default(0) // Impuesto Consumos Especiales
+  irbpnr  Float @default(0) // Impuesto Patrimonio
+  rebiius Float @default(0) // Régimen Benéfico
+  total   Float
+
   // Datos adicionales
-  formaPago             String?           // Códigos SRI: 01=Efectivo, 16=Tarjeta Crédito, etc.
-  plazoCredito          Int?              // Días de crédito
-  
+  formaPago    String? // Códigos SRI: 01=Efectivo, 16=Tarjeta Crédito, etc.
+  plazoCredito Int? // Días de crédito
+
   // Información del Comprador/Adquirente (SRI)
-  tipoIdentificacionComprador  String?    // 04=RUC, 05=Cédula, 06=Pasaporte
-  identificacionComprador      String?    // RUC o Cédula del cliente
-  razonSocialComprador         String?    // Nombre del cliente
-  direccionComprador           String?    // Dirección del cliente
-  emailComprador               String?    // Email del cliente
-  
+  tipoIdentificacionComprador String? // 04=RUC, 05=Cédula, 06=Pasaporte
+  identificacionComprador     String? // RUC o Cédula del cliente
+  razonSocialComprador        String? // Nombre del cliente
+  direccionComprador          String? // Dirección del cliente
+  emailComprador              String? // Email del cliente
+
   // Datos SRI
-  numeroAutorizacion    String?           // Número de autorización del SRI
-  xmlGenerado           String?           @db.Text // XML generado (sin firmar)
-  xmlFirmado            String?           @db.Text // XML firmado
-  xmlAutorizado         String?           @db.Text // XML autorizado por SRI
-  rutaXmlGenerado       String?           // Ruta del archivo XML generado
-  rutaXmlFirmado        String?           // Ruta del archivo XML firmado
-  rutaXmlAutorizado     String?           // Ruta del archivo XML autorizado
-  rutaPdfRide           String?           // Ruta del PDF (RIDE)
-  motivoAnulacion       String?
-  secuencialFactura     Int?              // Secuencial usado para esta factura
-  
+  numeroAutorizacion String? // Número de autorización del SRI
+  xmlGenerado        String? @db.Text // XML generado (sin firmar)
+  xmlFirmado         String? @db.Text // XML firmado
+  xmlAutorizado      String? @db.Text // XML autorizado por SRI
+  rutaXmlGenerado    String? // Ruta del archivo XML generado
+  rutaXmlFirmado     String? // Ruta del archivo XML firmado
+  rutaXmlAutorizado  String? // Ruta del archivo XML autorizado
+  rutaPdfRide        String? // Ruta del PDF (RIDE)
+  motivoAnulacion    String?
+  secuencialFactura  Int? // Secuencial usado para esta factura
+
   // Observaciones
-  observaciones         String?
-  
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  
+  observaciones String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
-  packager              Packager          @relation(fields: [packagerId], references: [id])
-  order                 Order?            @relation(fields: [orderId], references: [id])
-  detalles              InvoiceDetail[]
-  pagos                 Payment[]
-  
+  packager Packager        @relation(fields: [packagerId], references: [id])
+  order    Order?          @relation(fields: [orderId], references: [id])
+  detalles InvoiceDetail[]
+  pagos    Payment[]
+
   @@map("invoices")
 }
 
 // Detalle de factura (ítems/productos)
 model InvoiceDetail {
-  id                    Int         @id @default(autoincrement())
-  invoiceId             Int
-  
+  id        Int @id @default(autoincrement())
+  invoiceId Int
+
   // Información del producto/servicio
-  codigoPrincipal       String
-  codigoAuxiliar        String?
-  descripcion           String
-  cantidad              Float
-  unidadMedida          String      @default("3")  // 1=kg, 2=litro, 3=unidad
-  precioUnitario        Float
-  descuento             Float       @default(0)
+  codigoPrincipal        String
+  codigoAuxiliar         String?
+  descripcion            String
+  cantidad               Float
+  unidadMedida           String  @default("3") // 1=kg, 2=litro, 3=unidad
+  precioUnitario         Float
+  descuento              Float   @default(0)
   precioTotalSinImpuesto Float
-  
+
   // Impuestos (según SRI Ecuador)
-  codigoImpuesto        String      // 2=IVA, 3=ICE, 5=IRBPNR, 6=ReBIUS
-  codigoPorcentaje      String      // 0=0%, 2=12%, 3=14%, 4=5%, 5=20%, 6=No objeto
-  tarifa                Float       // 0, 5, 12, 14, 20, etc.
-  baseImponible         Float
-  valor                 Float       // Valor del impuesto
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
-  
+  codigoImpuesto   String // 2=IVA, 3=ICE, 5=IRBPNR, 6=ReBIUS
+  codigoPorcentaje String // 0=0%, 2=12%, 3=14%, 4=5%, 5=20%, 6=No objeto
+  tarifa           Float // 0, 5, 12, 14, 20, etc.
+  baseImponible    Float
+  valor            Float // Valor del impuesto
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
-  invoice               Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
   @@map("invoice_details")
 }
 
 // Pagos recibidos de empacadoras
 model Payment {
-  id                    Int         @id @default(autoincrement())
-  
+  id Int @id @default(autoincrement())
+
   // Referencias
-  invoiceId             Int
-  packagerId            Int
-  
+  invoiceId  Int
+  packagerId Int
+
   // Información del pago
-  numeroPago            String      @unique // Código interno
-  monto                 Float
-  fechaPago             DateTime    @default(now())
-  formaPago             String      // EFECTIVO, TRANSFERENCIA, CHEQUE, etc.
-  
+  numeroPago String   @unique // Código interno
+  monto      Float
+  fechaPago  DateTime @default(now())
+  formaPago  String // EFECTIVO, TRANSFERENCIA, CHEQUE, etc.
+
   // Datos bancarios (si aplica)
-  banco                 String?
-  numeroCuenta          String?
-  numeroComprobante     String?     // Número de transferencia/cheque
-  
+  banco             String?
+  numeroCuenta      String?
+  numeroComprobante String? // Número de transferencia/cheque
+
   // Estado
-  estado                String      @default("RECIBIDO") // RECIBIDO, CONCILIADO, ANULADO
-  
+  estado String @default("RECIBIDO") // RECIBIDO, CONCILIADO, ANULADO
+
   // Observaciones
-  observaciones         String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
-  
+  observaciones String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
-  invoice               Invoice     @relation(fields: [invoiceId], references: [id])
-  packager              Packager    @relation(fields: [packagerId], references: [id])
-  
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+  packager Packager @relation(fields: [packagerId], references: [id])
+
   @@map("payments")
 }
 
 // Historial de Precios
 model PriceHistory {
-  id                    Int         @id @default(autoincrement())
-  
-  providerId            Int?
-  packagerId            Int?
-  
-  talla                 String?           // Calibre de talla (ej: "16/20", "20", "30")
-  
-  precioCompra          Float?
-  precioVenta           Float?
-  
-  fecha                 DateTime    @default(now())
-  temporada             String?     // verano, invierno, etc.
-  
-  observaciones         String?
+  id Int @id @default(autoincrement())
+
+  providerId Int?
+  packagerId Int?
+
+  talla String? // Calibre de talla (ej: "16/20", "20", "30")
+
+  precioCompra Float?
+  precioVenta  Float?
+
+  fecha     DateTime @default(now())
+  temporada String? // verano, invierno, etc.
+
+  observaciones String?
 
   // Relaciones
-  provider              Provider?   @relation(fields: [providerId], references: [id])
-  packager              Packager?   @relation(fields: [packagerId], references: [id])
+  provider Provider? @relation(fields: [providerId], references: [id])
+  packager Packager? @relation(fields: [packagerId], references: [id])
 
   @@map("price_history")
 }
 
 // Sistema de Notificaciones
 model Notification {
-  id                    Int         @id @default(autoincrement())
-  orderId               Int
-  
-  tipo                  String      // whatsapp, email, sms
-  destinatario          String      // número o email
-  asunto                String?
-  mensaje               String
-  
-  enviado               Boolean     @default(false)
-  fechaEnvio            DateTime?
-  fechaLectura          DateTime?
-  
-  respuesta             String?
-  
-  createdAt             DateTime    @default(now())
+  id      Int @id @default(autoincrement())
+  orderId Int
+
+  tipo         String // whatsapp, email, sms
+  destinatario String // número o email
+  asunto       String?
+  mensaje      String
+
+  enviado      Boolean   @default(false)
+  fechaEnvio   DateTime?
+  fechaLectura DateTime?
+
+  respuesta String?
+
+  createdAt DateTime @default(now())
 
   // Relaciones
-  order                 Order       @relation(fields: [orderId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
 
   @@map("notifications")
 }
 
 // Bitácora de Eventos (Auditoría)
 model EventLog {
-  id                    Int         @id @default(autoincrement())
-  
-  orderId               Int?
-  userId                Int
-  
-  accion                String      // "pedido_creado", "laboratorio_aprobado", etc.
-  descripcion           String
-  datosAnteriores       Json?       // Estado antes del cambio
-  datosNuevos           Json?       // Estado después del cambio
-  
-  ip                    String?
-  userAgent             String?
-  
-  createdAt             DateTime    @default(now())
+  id Int @id @default(autoincrement())
+
+  orderId Int?
+  userId  Int
+
+  accion          String // "pedido_creado", "laboratorio_aprobado", etc.
+  descripcion     String
+  datosAnteriores Json? // Estado antes del cambio
+  datosNuevos     Json? // Estado después del cambio
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
 
   // Relaciones
-  order                 Order?      @relation(fields: [orderId], references: [id])
-  user                  User        @relation("UserEventLog", fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+  user  User   @relation("UserEventLog", fields: [userId], references: [id])
 
   @@map("event_logs")
 }
@@ -722,107 +722,107 @@ model EventLog {
 
 // Fórmulas de Estimación de Precios
 model PriceFormula {
-  id                    Int         @id @default(autoincrement())
-  nombre                String      @unique
-  descripcion           String?
-  tipo                  String      // "compra" o "venta"
-  
+  id          Int     @id @default(autoincrement())
+  nombre      String  @unique
+  descripcion String?
+  tipo        String // "compra" o "venta"
+
   // Configuración de la fórmula
-  factores              Json        // Factores y pesos para el cálculo
-  algoritmo             String      // "promedio_ponderado", "regresion_lineal", "neural_network", etc.
-  
+  factores  Json // Factores y pesos para el cálculo
+  algoritmo String // "promedio_ponderado", "regresion_lineal", "neural_network", etc.
+
   // Parámetros específicos
-  ventanaHistorica      Int         @default(90)    // Días de historial a considerar
-  pesoTemporada         Float       @default(0.3)   // Peso de la temporada
-  pesoProveedor         Float       @default(0.2)   // Peso del historial del proveedor
-  pesoTalla             Float       @default(0.2)   // Peso de la talla
-  pesoMercado           Float       @default(0.3)   // Peso del mercado general
-  
+  ventanaHistorica Int   @default(90) // Días de historial a considerar
+  pesoTemporada    Float @default(0.3) // Peso de la temporada
+  pesoProveedor    Float @default(0.2) // Peso del historial del proveedor
+  pesoTalla        Float @default(0.2) // Peso de la talla
+  pesoMercado      Float @default(0.3) // Peso del mercado general
+
   // Configuración de ajustes
-  ajustePorVolumen      Float       @default(0.05)  // Descuento por volumen
-  ajustePorCalidad      Float       @default(0.1)   // Ajuste por calidad histórica
-  margenSeguridad       Float       @default(0.05)  // Margen de seguridad en estimación
-  
+  ajustePorVolumen Float @default(0.05) // Descuento por volumen
+  ajustePorCalidad Float @default(0.1) // Ajuste por calidad histórica
+  margenSeguridad  Float @default(0.05) // Margen de seguridad en estimación
+
   // Estado
-  activa                Boolean     @default(true)
-  version               String      @default("1.0")
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  activa  Boolean @default(true)
+  version String  @default("1.0")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  estimaciones          PriceEstimation[]
+  estimaciones PriceEstimation[]
 
   @@map("price_formulas")
 }
 
 // Estimaciones de Precios Generadas
 model PriceEstimation {
-  id                    Int         @id @default(autoincrement())
-  
-  formulaId             Int
-  orderId               Int?        // Si está asociada a un pedido específico
-  
+  id Int @id @default(autoincrement())
+
+  formulaId Int
+  orderId   Int? // Si está asociada a un pedido específico
+
   // Parámetros de entrada
-  providerId            Int?
-  packagerId            Int?
-  talla                 String?           // Calibre de talla (ej: "16/20", "20", "30")
-  cantidad              Float?      // Libras
-  temporada             String?     // verano, invierno, etc.
-  fechaEstimacion       DateTime    @default(now())
-  
+  providerId      Int?
+  packagerId      Int?
+  talla           String? // Calibre de talla (ej: "16/20", "20", "30")
+  cantidad        Float? // Libras
+  temporada       String? // verano, invierno, etc.
+  fechaEstimacion DateTime @default(now())
+
   // Resultados de la estimación
-  precioEstimadoCompra  Float?
-  precioEstimadoVenta   Float?
-  confiabilidad         Float?      // 0-100, porcentaje de confiabilidad
-  margenEstimado        Float?      // Margen de ganancia estimado
-  
+  precioEstimadoCompra Float?
+  precioEstimadoVenta  Float?
+  confiabilidad        Float? // 0-100, porcentaje de confiabilidad
+  margenEstimado       Float? // Margen de ganancia estimado
+
   // Desglose del cálculo
-  factoresUsados        Json        // Detalle de qué factores se usaron
-  calculoDetallado      Json        // Paso a paso del cálculo
-  datosHistoricos       Json        // Datos históricos utilizados
-  
+  factoresUsados   Json // Detalle de qué factores se usaron
+  calculoDetallado Json // Paso a paso del cálculo
+  datosHistoricos  Json // Datos históricos utilizados
+
   // Comparación con realidad (cuando esté disponible)
-  precioRealCompra      Float?
-  precioRealVenta       Float?
-  desviacionCompra      Float?      // % de diferencia con el real
-  desviacionVenta       Float?      // % de diferencia con el real
-  
-  observaciones         String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  precioRealCompra Float?
+  precioRealVenta  Float?
+  desviacionCompra Float? // % de diferencia con el real
+  desviacionVenta  Float? // % de diferencia con el real
+
+  observaciones String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  formula               PriceFormula @relation(fields: [formulaId], references: [id])
-  order                 Order?      @relation(fields: [orderId], references: [id])
+  formula PriceFormula @relation(fields: [formulaId], references: [id])
+  order   Order?       @relation(fields: [orderId], references: [id])
 
   @@map("price_estimations")
 }
 
 // Factores de Mercado para Estimaciones
 model MarketFactor {
-  id                    Int         @id @default(autoincrement())
-  
-  nombre                String      @unique
-  descripcion           String?
-  categoria             String      // "temporal", "economico", "climatico", "demanda", etc.
-  
+  id Int @id @default(autoincrement())
+
+  nombre      String  @unique
+  descripcion String?
+  categoria   String // "temporal", "economico", "climatico", "demanda", etc.
+
   // Valor del factor
-  valor                 Float
-  unidad                String?     // "porcentaje", "dolares", "indice", etc.
-  fecha                 DateTime    @default(now())
-  
+  valor  Float
+  unidad String? // "porcentaje", "dolares", "indice", etc.
+  fecha  DateTime @default(now())
+
   // Validez del factor
-  validoHasta           DateTime?
-  fuente                String?     // De dónde proviene el dato
-  
+  validoHasta DateTime?
+  fuente      String? // De dónde proviene el dato
+
   // Configuración
-  peso                  Float       @default(1.0)    // Peso en las estimaciones
-  activo                Boolean     @default(true)
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  peso   Float   @default(1.0) // Peso en las estimaciones
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("MarketFactor")
 }
@@ -831,137 +831,136 @@ model MarketFactor {
 
 // Datos de mercado en tiempo real
 model DatosMercadoTiempoReal {
-  id                Int                @id @default(autoincrement())
-  fechaHora         DateTime           @default(now())
-  tipoDato          TipoDatoMercado
-  fuente            String             // API, scraping, manual, etc.
-  mercadoDestino    MercadoDestino?
-  valor             Float
-  unidad            String             // USD/libra, grados celsius, etc.
-  metadatos         Json?              // datos adicionales específicos del tipo
-  confiabilidad     Int                @default(100) // 0-100
-  
+  id             Int             @id @default(autoincrement())
+  fechaHora      DateTime        @default(now())
+  tipoDato       TipoDatoMercado
+  fuente         String // API, scraping, manual, etc.
+  mercadoDestino MercadoDestino?
+  valor          Float
+  unidad         String // USD/libra, grados celsius, etc.
+  metadatos      Json? // datos adicionales específicos del tipo
+  confiabilidad  Int             @default(100) // 0-100
+
   @@map("DatosMercadoTiempoReal")
 }
 
 // Información geográfica de Ecuador
 model InformacionGeograficaEcuador {
-  id                    Int                    @id @default(autoincrement())
-  provincia             ProvinciaCamaronera    @unique
-  region                RegionEcuador
-  ciudad                String
-  coordenadas           String?                // lat,lng format
-  altitud               Int?
-  factorLogistico       Float                  @default(1.0)     // multiplier para costos
-  distanciaGuayaquil    Int?                   // km al puerto principal
-  activo                Boolean                @default(true)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  
+  id                 Int                 @id @default(autoincrement())
+  provincia          ProvinciaCamaronera @unique
+  region             RegionEcuador
+  ciudad             String
+  coordenadas        String? // lat,lng format
+  altitud            Int?
+  factorLogistico    Float               @default(1.0) // multiplier para costos
+  distanciaGuayaquil Int? // km al puerto principal
+  activo             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
   // Relaciones
-  produccionNacional    ProduccionNacional[]
-  
+  produccionNacional ProduccionNacional[]
+
   @@map("InformacionGeograficaEcuador")
 }
 
 // Modelos de ML entrenados
 model ModelosML {
-  id                        Int                 @id @default(autoincrement())
-  nombre                    String
-  algoritmo                 TipoAlgoritmoML
-  version                   String
-  rutaModelo                String              // path al archivo del modelo
-  parametros                Json                // hyperparameters del modelo
-  metricas                  Json                // accuracy, RMSE, MAE, etc.
-  fechaEntrenamiento        DateTime
-  fechaUltimaPrediccion     DateTime?
-  activo                    Boolean             @default(true)
-  createdAt                 DateTime            @default(now())
-  updatedAt                 DateTime            @updatedAt
-  
+  id                    Int             @id @default(autoincrement())
+  nombre                String
+  algoritmo             TipoAlgoritmoML
+  version               String
+  rutaModelo            String // path al archivo del modelo
+  parametros            Json // hyperparameters del modelo
+  metricas              Json // accuracy, RMSE, MAE, etc.
+  fechaEntrenamiento    DateTime
+  fechaUltimaPrediccion DateTime?
+  activo                Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
   // Relaciones
-  predicciones              PrediccionesIA[]
-  
+  predicciones PrediccionesIA[]
+
   @@map("ModelosML")
 }
 
 // Predicciones de IA
 model PrediccionesIA {
-  id                    Int            @id @default(autoincrement())
-  modeloId              Int
-  fechaCreacion         DateTime       @default(now())
-  fechaPrediccion       DateTime       // fecha para la cual se predice
-  tipoProducto          String         // "CAMARONES"
-  calibre               String         // "50", "40/50", "30/40", etc.
-  precioPredicho        Float
-  intervaloConfianza    Json?          // {"min": 5.2, "max": 5.8, "confianza": 0.95}
-  factoresInfluyentes   Json?          // factores que más influenciaron la predicción
-  precioReal            Float?         // se llena cuando se conoce el precio real
-  errorPrediccion       Float?         // diferencia entre predicho y real
-  createdAt             DateTime       @default(now())
-  
+  id                  Int      @id @default(autoincrement())
+  modeloId            Int
+  fechaCreacion       DateTime @default(now())
+  fechaPrediccion     DateTime // fecha para la cual se predice
+  tipoProducto        String // "CAMARONES"
+  calibre             String // "50", "40/50", "30/40", etc.
+  precioPredicho      Float
+  intervaloConfianza  Json? // {"min": 5.2, "max": 5.8, "confianza": 0.95}
+  factoresInfluyentes Json? // factores que más influenciaron la predicción
+  precioReal          Float? // se llena cuando se conoce el precio real
+  errorPrediccion     Float? // diferencia entre predicho y real
+  createdAt           DateTime @default(now())
+
   // Relaciones
-  modelo                ModelosML      @relation(fields: [modeloId], references: [id])
+  modelo ModelosML @relation(fields: [modeloId], references: [id])
 
   // Evitar duplicados por combinación clave (tipoProducto, calibre, fechaPrediccion)
   @@unique([tipoProducto, calibre, fechaPrediccion])
-  
   @@map("PrediccionesIA")
 }
 
 // Análisis de sentimientos del mercado
 model AnalisisSentimientos {
-  id                Int          @id @default(autoincrement())
-  fecha             DateTime     @db.Date
-  fuente            String       // "noticias", "redes_sociales", "reportes_mercado"
-  contenido         String
-  sentimiento       Float        // -1 a 1
-  confianza         Float        // 0 a 1
-  temas             String[]     // ["precio", "demanda", "produccion", "exportacion"]
-  impactoEstimado   Float        @default(0)    // -1 a 1, impacto en precios
-  procesadoPor      String       // "ollama-llama3.2", "vader", "manual"
-  createdAt         DateTime     @default(now())
-  
+  id              Int      @id @default(autoincrement())
+  fecha           DateTime @db.Date
+  fuente          String // "noticias", "redes_sociales", "reportes_mercado"
+  contenido       String
+  sentimiento     Float // -1 a 1
+  confianza       Float // 0 a 1
+  temas           String[] // ["precio", "demanda", "produccion", "exportacion"]
+  impactoEstimado Float    @default(0) // -1 a 1, impacto en precios
+  procesadoPor    String // "ollama-llama3.2", "vader", "manual"
+  createdAt       DateTime @default(now())
+
   @@map("AnalisisSentimientos")
 }
 
 // Datos de producción nacional
 model ProduccionNacional {
-  id                    Int                           @id @default(autoincrement())
-  fecha                 DateTime                      @db.Date
-  provincia             ProvinciaCamaronera
-  toneladas             Float
-  numeroGranjas         Int?
-  areaCultivo           Float?                        // hectáreas
-  rendimientoPromedio   Float?                        // libras por hectárea
-  factorClimatico       Float                         @default(1)    // multiplicador por clima
-  factorEnfermedad      Float                         @default(1)    // multiplicador por enfermedades
-  fuente                String                        @default("CNA")
-  createdAt             DateTime                      @default(now())
-  
+  id                  Int                 @id @default(autoincrement())
+  fecha               DateTime            @db.Date
+  provincia           ProvinciaCamaronera
+  toneladas           Float
+  numeroGranjas       Int?
+  areaCultivo         Float? // hectáreas
+  rendimientoPromedio Float? // libras por hectárea
+  factorClimatico     Float               @default(1) // multiplicador por clima
+  factorEnfermedad    Float               @default(1) // multiplicador por enfermedades
+  fuente              String              @default("CNA")
+  createdAt           DateTime            @default(now())
+
   // Relaciones
   informacionGeografica InformacionGeograficaEcuador @relation(fields: [provincia], references: [provincia])
-  
+
   @@map("ProduccionNacional")
 }
 
 // Datos de exportación detallados
 model ExportacionDetallada {
-  id                  Int             @id @default(autoincrement())
-  fecha               DateTime        @db.Date
+  id                  Int            @id @default(autoincrement())
+  fecha               DateTime       @db.Date
   mercadoDestino      MercadoDestino
   tipoProducto        String
   toneladas           Float
   valorFOB            Float
   precioPromedioLibra Float
   nombreEmpresa       String?
-  puertoSalida        String          @default("Guayaquil")
-  arancelAplicado     Float?          // porcentaje
+  puertoSalida        String         @default("Guayaquil")
+  arancelAplicado     Float? // porcentaje
   tipoCambio          Float?
-  costosLogisticos    Float?          // USD por libra
-  fuente              String          @default("BCE")
-  createdAt           DateTime        @default(now())
-  
+  costosLogisticos    Float? // USD por libra
+  fuente              String         @default("BCE")
+  createdAt           DateTime       @default(now())
+
   @@map("ExportacionDetallada")
 }
 
@@ -974,187 +973,187 @@ model ConfiguracionIA {
   activo      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   @@map("ConfiguracionIA")
 }
 
 // Parámetros de Calidad por Proveedor (para ajustar estimaciones)
 model ProviderQuality {
-  id                    Int         @id @default(autoincrement())
-  providerId            Int         @unique
-  
+  id         Int @id @default(autoincrement())
+  providerId Int @unique
+
   // Métricas de calidad
-  tasaAprobacion        Float       @default(0.0)    // % de lotes aprobados
-  puntualidadPromedio   Float       @default(0.0)    // % de entregas puntuales
-  calidadConsistencia   Float       @default(0.0)    // Consistencia de calidad (0-10)
-  
+  tasaAprobacion      Float @default(0.0) // % de lotes aprobados
+  puntualidadPromedio Float @default(0.0) // % de entregas puntuales
+  calidadConsistencia Float @default(0.0) // Consistencia de calidad (0-10)
+
   // Históricos de desempeño
-  pedidosCompletados    Int         @default(0)
-  pedidosRechazados     Int         @default(0)
-  promedioTiempoEntrega Float       @default(0.0)    // Días promedio
-  
+  pedidosCompletados    Int   @default(0)
+  pedidosRechazados     Int   @default(0)
+  promedioTiempoEntrega Float @default(0.0) // Días promedio
+
   // Ajustes para estimaciones
-  factorConfiabilidad   Float       @default(1.0)    // Multiplicador de confiabilidad
-  factorPrecio          Float       @default(1.0)    // Ajuste de precio por calidad
-  
-  fechaUltimaRevision   DateTime    @default(now())
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  factorConfiabilidad Float @default(1.0) // Multiplicador de confiabilidad
+  factorPrecio        Float @default(1.0) // Ajuste de precio por calidad
+
+  fechaUltimaRevision DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   // Relaciones
-  provider              Provider    @relation(fields: [providerId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
 
   @@map("provider_quality")
 }
 
 // Configuraciones del Sistema
 model SystemConfig {
-  id                    Int         @id @default(autoincrement())
-  clave                 String      @unique
-  valor                 String
-  descripcion           String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  id          Int     @id @default(autoincrement())
+  clave       String  @unique
+  valor       String
+  descripcion String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("system_config")
 }
 
 // Pagos a proveedores (liquidaciones)
 model ProviderPayment {
-  id                    Int         @id @default(autoincrement())
-  
+  id Int @id @default(autoincrement())
+
   // Referencias
-  providerId            Int
-  orderId               Int?        // Relación con pedido (opcional)
-  
+  providerId Int
+  orderId    Int? // Relación con pedido (opcional)
+
   // Información del pago
-  numeroLiquidacion     String      @unique
-  monto                 Float
-  fechaPago             DateTime    @default(now())
-  formaPago             String      // EFECTIVO, TRANSFERENCIA, CHEQUE
-  
+  numeroLiquidacion String   @unique
+  monto             Float
+  fechaPago         DateTime @default(now())
+  formaPago         String // EFECTIVO, TRANSFERENCIA, CHEQUE
+
   // Datos bancarios (si aplica)
-  banco                 String?
-  numeroCuenta          String?
-  numeroComprobante     String?
-  
+  banco             String?
+  numeroCuenta      String?
+  numeroComprobante String?
+
   // Conceptos
-  concepto              String      // Descripción del pago
-  cantidadLibras        Float?      // Libras pagadas
-  precioLibra           Float?      // Precio por libra
-  
+  concepto       String // Descripción del pago
+  cantidadLibras Float? // Libras pagadas
+  precioLibra    Float? // Precio por libra
+
   // Estado
-  estado                String      @default("PAGADO") // PAGADO, ANULADO
-  
+  estado String @default("PAGADO") // PAGADO, ANULADO
+
   // Observaciones
-  observaciones         String?
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
-  
+  observaciones String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
-  provider              Provider    @relation(fields: [providerId], references: [id])
-  order                 Order?      @relation(fields: [orderId], references: [id])
-  
+  provider Provider @relation(fields: [providerId], references: [id])
+  order    Order?   @relation(fields: [orderId], references: [id])
+
   @@map("provider_payments")
 }
 
 // Configuración de facturación electrónica (SRI)
 model InvoiceConfig {
-  id                    Int         @id @default(autoincrement())
-  
+  id Int @id @default(autoincrement())
+
   // Información del emisor
-  ruc                   String      @unique
-  razonSocial           String
-  nombreComercial       String?
-  direccionMatriz       String
+  ruc                      String  @unique
+  razonSocial              String
+  nombreComercial          String?
+  direccionMatriz          String
   direccionEstablecimiento String?
-  contribuyenteEspecial String?
-  obligadoContabilidad  Boolean     @default(true)
-  
+  contribuyenteEspecial    String?
+  obligadoContabilidad     Boolean @default(true)
+
   // Establecimiento y punto de emisión
-  codigoEstablecimiento String      @default("001")
-  codigoPuntoEmision    String      @default("001")
-  
+  codigoEstablecimiento String @default("001")
+  codigoPuntoEmision    String @default("001")
+
   // Secuenciales
-  secuencialFactura     Int         @default(1)
-  secuencialNotaCredito Int         @default(1)
-  secuencialNotaDebito  Int         @default(1)
-  secuencialRetencion   Int         @default(1)
-  
+  secuencialFactura     Int @default(1)
+  secuencialNotaCredito Int @default(1)
+  secuencialNotaDebito  Int @default(1)
+  secuencialRetencion   Int @default(1)
+
   // Configuración SRI
-  ambienteSRI           String      @default("PRUEBAS") // PRUEBAS o PRODUCCION
-  tipoEmision           String      @default("NORMAL") // NORMAL o CONTINGENCIA
-  
+  ambienteSRI String @default("PRUEBAS") // PRUEBAS o PRODUCCION
+  tipoEmision String @default("NORMAL") // NORMAL o CONTINGENCIA
+
   // Certificado digital
-  rutaCertificado       String?
-  claveCertificado      String?
-  fechaExpiracion       DateTime?
-  
+  rutaCertificado  String?
+  claveCertificado String?
+  fechaExpiracion  DateTime?
+
   // URLs del SRI (microservicio de firma)
-  urlFirmaService       String      @default("http://localhost:9000")
-  
+  urlFirmaService String @default("http://localhost:9000")
+
   // Estado
-  activo                Boolean     @default(true)
-  
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
-  
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("invoice_config")
 }
 
 // ===== TALLAS DE CAMARONES =====
 
 model ShrimpType {
-  id                    Int               @id @default(autoincrement())
-  name                  String            // "Camarón Blanco", "Camarón Rojo", "Camarón Tigre"
-  scientificName        String            @map("scientific_name") // "Penaeus vannamei", etc.
-  productionPercentage  Float             @map("production_percentage") // Porcentaje de producción nacional
-  
-  sizes                 ShrimpSize[]
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  
+  id                   Int    @id @default(autoincrement())
+  name                 String // "Camarón Blanco", "Camarón Rojo", "Camarón Tigre"
+  scientificName       String @map("scientific_name") // "Penaeus vannamei", etc.
+  productionPercentage Float  @map("production_percentage") // Porcentaje de producción nacional
+
+  sizes     ShrimpSize[]
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
   @@map("shrimp_types")
 }
 
 model PresentationType {
-  id                    Int               @id @default(autoincrement())
-  code                  String            @unique  // "L", "HO", "HL", "PD"
-  name                  String            // "Vivo", "Con Cabeza", "Sin Cabeza/Tail", "Pelado"
-  rendimiento           Float             // Porcentaje de rendimiento (100, 75, 50, etc.)
-  lifeSpanDays          Int               @map("life_span_days") // Días de vida útil en frío
-  description           String?
-  
-  sizes                 ShrimpSize[]
-  orders                Order[]           // Pedidos con esta presentación
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  
+  id           Int     @id @default(autoincrement())
+  code         String  @unique // "L", "HO", "HL", "PD"
+  name         String // "Vivo", "Con Cabeza", "Sin Cabeza/Tail", "Pelado"
+  rendimiento  Float // Porcentaje de rendimiento (100, 75, 50, etc.)
+  lifeSpanDays Int     @map("life_span_days") // Días de vida útil en frío
+  description  String?
+
+  sizes     ShrimpSize[]
+  orders    Order[] // Pedidos con esta presentación
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
   @@map("presentation_types")
 }
 
 model ShrimpSize {
-  id                    Int               @id @default(autoincrement())
-  shrimpTypeId          Int               @map("shrimp_type_id")
-  presentationTypeId    Int               @map("presentation_type_id")
-  code                  String            // "10/15", "16/20", "6/8", etc.
-  classification        String            // "Jumbo", "Large", "Medium", etc.
-  minPiecesPerLb        Int               @map("min_pieces_per_lb") // Mínimo de piezas por libra
-  maxPiecesPerLb        Int               @map("max_pieces_per_lb") // Máximo de piezas por libra
-  minWeightGrams        Float             @map("min_weight_grams") // Peso mínimo en gramos
-  maxWeightGrams        Float             @map("max_weight_grams") // Peso máximo en gramos
-  minWeightOz           Float             @map("min_weight_oz") // Peso mínimo en onzas
-  maxWeightOz           Float             @map("max_weight_oz") // Peso máximo en onzas
-  displayLabel          String            @map("display_label") // Etiqueta para mostrar en UI
-  
-  shrimpType            ShrimpType        @relation(fields: [shrimpTypeId], references: [id])
-  presentationType      PresentationType  @relation(fields: [presentationTypeId], references: [id])
-  orders                Order[]           // Pedidos con esta talla
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  
+  id                 Int    @id @default(autoincrement())
+  shrimpTypeId       Int    @map("shrimp_type_id")
+  presentationTypeId Int    @map("presentation_type_id")
+  code               String // "10/15", "16/20", "6/8", etc.
+  classification     String // "Jumbo", "Large", "Medium", etc.
+  minPiecesPerLb     Int    @map("min_pieces_per_lb") // Mínimo de piezas por libra
+  maxPiecesPerLb     Int    @map("max_pieces_per_lb") // Máximo de piezas por libra
+  minWeightGrams     Float  @map("min_weight_grams") // Peso mínimo en gramos
+  maxWeightGrams     Float  @map("max_weight_grams") // Peso máximo en gramos
+  minWeightOz        Float  @map("min_weight_oz") // Peso mínimo en onzas
+  maxWeightOz        Float  @map("max_weight_oz") // Peso máximo en onzas
+  displayLabel       String @map("display_label") // Etiqueta para mostrar en UI
+
+  shrimpType       ShrimpType       @relation(fields: [shrimpTypeId], references: [id])
+  presentationType PresentationType @relation(fields: [presentationTypeId], references: [id])
+  orders           Order[] // Pedidos con esta talla
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
   @@unique([code, presentationTypeId])
   @@map("shrimp_sizes")
 }
