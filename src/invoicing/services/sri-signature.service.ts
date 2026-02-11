@@ -1,5 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios from 'axios';
+import * as FormData from 'form-data';
+import * as fs from 'fs';
 
 @Injectable()
 export class SriSignatureService {
@@ -27,31 +29,45 @@ export class SriSignatureService {
     estado: string;
   }> {
     try {
-      this.logger.log(`Enviando ${tipoDocumento} al servicio de firma: ${urlFirmaService}`);
+      this.logger.log(`Enviando ${tipoDocumento} al servicio de firma: ${urlFirmaService}/api/facturacion/procesar`);
+
+      const formData = new FormData();
+      // Adjuntar XML como archivo
+      formData.append('archivo_xml', Buffer.from(xml, 'utf-8'), {
+        filename: 'documento.xml',
+        contentType: 'application/xml',
+      });
+      // Adjuntar certificado leyendo del disco
+      if (!fs.existsSync(rutaCertificado)) {
+        throw new BadRequestException(`No se encuentra el certificado en: ${rutaCertificado}`);
+      }
+      formData.append('certificado_p12', fs.createReadStream(rutaCertificado));
+      formData.append('clave_certificado', claveCertificado);
+      formData.append('tipo_documento', tipoDocumento);
 
       const response = await axios.post(
-        `${urlFirmaService}/api/firmar-autorizar`,
+        `${urlFirmaService}/api/facturacion/procesar`,
+        formData,
         {
-          xml,
-          certificadoPath: rutaCertificado,
-          certificadoPassword: claveCertificado,
-          tipoDocumento,
-        },
-        {
-          timeout: 30000, // 30 segundos
+          timeout: 40000,
           headers: {
-            'Content-Type': 'application/json',
+            ...formData.getHeaders(),
           },
         },
       );
 
       if (response.data.success) {
-        this.logger.log(`✅ ${tipoDocumento} firmado y autorizado exitosamente`);
+        this.logger.log(`✅ ${tipoDocumento} procesado exitosamente`);
+
+        const data = response.data.data;
+        // Decodificar XML autorizado de Base64
+        const xmlAutorizado = Buffer.from(data.xml_autorizado_base64, 'base64').toString('utf-8');
+
         return {
-          xmlFirmado: response.data.xmlFirmado,
-          numeroAutorizacion: response.data.numeroAutorizacion,
-          fechaAutorizacion: response.data.fechaAutorizacion,
-          estado: response.data.estado || 'AUTORIZADO',
+          xmlFirmado: xmlAutorizado,
+          numeroAutorizacion: data.numero_autorizacion,
+          fechaAutorizacion: data.fecha_autorizacion,
+          estado: data.estado || 'AUTORIZADO',
         };
       } else {
         throw new BadRequestException(
@@ -60,11 +76,12 @@ export class SriSignatureService {
       }
     } catch (error: any) {
       if (error.response?.data?.message) {
-        // Si el error indica que está en procesamiento, propagarlo
-        if (error.response.data.message.includes('EN PROCESAMIENTO')) {
-          throw new BadRequestException(`CLAVE DE ACCESO EN PROCESAMIENTO: ${error.response.data.claveAcceso}`);
-        }
+        // Errores conocidos del servicio
         throw new BadRequestException(`Error SRI: ${error.response.data.message}`);
+      }
+      if (error.response?.data?.error?.message) {
+        // Estructura de error del PHP nueva
+        throw new BadRequestException(`Error SRI: ${error.response.data.error.message}`);
       }
 
       if (error.code === 'ECONNREFUSED') {
@@ -97,20 +114,34 @@ export class SriSignatureService {
     try {
       this.logger.log(`Consultando autorización para clave: ${claveAcceso}`);
 
-      const response = await axios.get(
-        `${urlFirmaService}/api/consultar-autorizacion/${claveAcceso}`,
+      // El endpoint de consulta en PHP es POST /api/facturacion/consultar-autorizacion y requiere JSON body
+      const response = await axios.post(
+        `${urlFirmaService}/api/facturacion/consultar-autorizacion`,
+        { clave_acceso: claveAcceso },
         {
-          timeout: 15000, // 15 segundos
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 15000,
         },
       );
 
-      return {
-        estado: response.data.estado,
-        xmlAutorizado: response.data.xmlAutorizado,
-        numeroAutorizacion: response.data.numeroAutorizacion,
-        fechaAutorizacion: response.data.fechaAutorizacion,
-        mensajes: response.data.mensajes || [],
-      };
+      if (response.data.success) {
+        const data = response.data.data;
+        let xmlAutorizado: string | undefined;
+        if (data.xml_autorizado_base64) {
+          xmlAutorizado = Buffer.from(data.xml_autorizado_base64, 'base64').toString('utf-8');
+        }
+
+        return {
+          estado: data.estado,
+          xmlAutorizado: xmlAutorizado,
+          numeroAutorizacion: data.numero_autorizacion,
+          fechaAutorizacion: data.fecha_autorizacion,
+          mensajes: data.mensajes || [],
+        };
+      }
+
+      return { estado: 'ERROR', mensajes: [response.data.message] };
+
     } catch (error: any) {
       if (error.code === 'ECONNREFUSED') {
         throw new BadRequestException(

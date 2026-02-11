@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>Prueba</razonSocial>
+    <nombreComercial>Prueba</nombreComercial>
+    <ruc>0103449047001</ruc>
+    <claveAcceso>1002202601010344904700110010010000000016837553518</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000001</secuencial>
+    <dirMatriz>Las herrerias</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>10/02/2026</fechaEmision>
+    <dirEstablecimiento>Las herrerias</dirEstablecimiento>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>06</tipoIdentificacionComprador>
+    <razonSocialComprador>Empacadora del Pacífico S.A.</razonSocialComprador>
+    <identificacionComprador>099999999999</identificacionComprador>
+    <direccionComprador>Guayaquil</direccionComprador>
+    <totalSinImpuestos>4800.00</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>0</codigoPorcentaje>
+        <baseImponible>4800.00</baseImponible>
+        <valor>0.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>4800.00</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>01</formaPago>
+        <total>4800.00</total>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>ORD-2026-0002</codigoPrincipal>
+      <codigoAuxiliar>2</codigoAuxiliar>
+      <descripcion>Sin Cola (Headless) 16/20 - Jumbo (Sin Cola) - Orden ORD-2026-0002</descripcion>
+      <cantidad>2000.00</cantidad>
+      <precioUnitario>2.400000</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>4800.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>0</codigoPorcentaje>
+          <tarifa>0</tarifa>
+          <baseImponible>4800.00</baseImponible>
+          <valor>0.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Empacadora">Empacadora del Pacífico S.A.</campoAdicional>
+    <campoAdicional nombre="Orden">2</campoAdicional>
+  </infoAdicional>
+</factura>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>Prueba</razonSocial>
+    <nombreComercial>Prueba</nombreComercial>
+    <ruc>0103449047001</ruc>
+    <claveAcceso>1002202601010344904700110010010000000121265696515</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000012</secuencial>
+    <dirMatriz>Las herrerias</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>10/02/2026</fechaEmision>
+    <dirEstablecimiento>Las herrerias</dirEstablecimiento>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>05</tipoIdentificacionComprador>
+    <razonSocialComprador>Josue Romero</razonSocialComprador>
+    <identificacionComprador>0750149700</identificacionComprador>
+    <direccionComprador>Las herrerias</direccionComprador>
+    <totalSinImpuestos>20.00</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>7</codigoPorcentaje>
+        <baseImponible>20.00</baseImponible>
+        <valor>3.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>23.00</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>01</formaPago>
+        <total>23.00</total>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>ITEM-846935</codigoPrincipal>
+      <descripcion>prueba</descripcion>
+      <cantidad>1.00</cantidad>
+      <precioUnitario>20.000000</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>20.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>7</codigoPorcentaje>
+          <tarifa>15</tarifa>
+          <baseImponible>20.00</baseImponible>
+          <valor>3.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Empacadora">Empacadora Costa Azul</campoAdicional>
+  </infoAdicional>
+</factura>

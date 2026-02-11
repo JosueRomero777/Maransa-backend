@@ -20,7 +20,7 @@ export class InvoicingService {
     private xmlGenerator: XmlGeneratorService,
     private sriSignature: SriSignatureService,
     private pdfGenerator: PdfGeneratorService,
-  ) {}
+  ) { }
 
   // ===== FACTURAS =====
 
@@ -64,6 +64,7 @@ export class InvoicingService {
     const invoice = await this.prisma.invoice.create({
       data: {
         numeroFactura,
+        secuencialFactura: config.secuencialFactura,
         packagerId: createInvoiceDto.packagerId,
         orderId: createInvoiceDto.orderId,
         tipoComprobante: createInvoiceDto.tipoComprobante || TipoComprobante.FACTURA,
@@ -372,11 +373,11 @@ export class InvoicingService {
 
         while (retryCount < maxRetries && !authorized) {
           retryCount++;
-          
+
           // Esperar antes de consultar (3 segundos primer intento, 5 después)
           const waitTime = retryCount === 1 ? 3000 : 5000;
           await new Promise(resolve => setTimeout(resolve, waitTime));
-          
+
           this.logger.log(`📋 Intento ${retryCount}/${maxRetries}: Consultando autorización...`);
 
           try {
@@ -828,13 +829,13 @@ export class InvoicingService {
       // Clasificar por código de porcentaje (según SRI Ecuador)
       // Código 0 = 0% | Código 2 = 12% | Código 3 = 14% | Código 4 = 5% | Código 5 = 20% | Código 7 = 15%
       const codigoPorcentaje = detalle.codigoPorcentaje;
-      
-      switch(codigoPorcentaje) {
+
+      switch (codigoPorcentaje) {
         case '0': // 0% Exento o No objeto
         case '6': // 0% No objeto
           subtotal0 += precioTotal;
           break;
-        case '4': // 5% Reducido
+        case '5': // 5% Reducido
           subtotal5 += precioTotal;
           iva += (precioTotal * 5) / 100;
           break;
@@ -846,11 +847,11 @@ export class InvoicingService {
           subtotal14 += precioTotal;
           iva += (precioTotal * 14) / 100;
           break;
-        case '7': // 15% Especial
+        case '4': // 15% Especial
           subtotal15 += precioTotal;
           iva += (precioTotal * 15) / 100;
           break;
-        case '5': // 20% Especial
+        case '8': // 20% Especial
           subtotal20 += precioTotal;
           iva += (precioTotal * 20) / 100;
           break;

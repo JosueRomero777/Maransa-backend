@@ -61,19 +61,19 @@ export class XmlGeneratorService {
     const infoFactura = root.ele('infoFactura');
     infoFactura.ele('fechaEmision').txt(this.formatDate(invoice.fechaEmision));
     infoFactura.ele('dirEstablecimiento').txt(config.direccionEstablecimiento || config.direccionMatriz);
-    
+
     if (config.contribuyenteEspecial) {
       infoFactura.ele('contribuyenteEspecial').txt(config.contribuyenteEspecial);
     }
-    
+
     infoFactura.ele('obligadoContabilidad').txt(config.obligadoContabilidad ? 'SI' : 'NO');
-    
+
     // Tipo de identificación del comprador
     const tipoIdentificacion = this.getTipoIdentificacion(invoice.identificacionComprador || '');
     infoFactura.ele('tipoIdentificacionComprador').txt(tipoIdentificacion);
     infoFactura.ele('razonSocialComprador').txt(invoice.razonSocialComprador || 'CONSUMIDOR FINAL');
     infoFactura.ele('identificacionComprador').txt(invoice.identificacionComprador || '9999999999999');
-    
+
     if (invoice.direccionComprador) {
       infoFactura.ele('direccionComprador').txt(invoice.direccionComprador);
     }
@@ -84,7 +84,7 @@ export class XmlGeneratorService {
 
     // Total con impuestos
     const totalConImpuestos = infoFactura.ele('totalConImpuestos');
-    
+
     // Agregar cada subtotal según tarifa de IVA
     if (invoice.subtotal0 > 0) {
       const totalImpuesto = totalConImpuestos.ele('totalImpuesto');
@@ -98,7 +98,7 @@ export class XmlGeneratorService {
       const iva5 = invoice.subtotal5 * 0.05;
       const totalImpuesto = totalConImpuestos.ele('totalImpuesto');
       totalImpuesto.ele('codigo').txt('2'); // IVA
-      totalImpuesto.ele('codigoPorcentaje').txt('4'); // 5%
+      totalImpuesto.ele('codigoPorcentaje').txt('5'); // 5% (antes 4)
       totalImpuesto.ele('baseImponible').txt(invoice.subtotal5.toFixed(2));
       totalImpuesto.ele('valor').txt(iva5.toFixed(2));
     }
@@ -125,7 +125,7 @@ export class XmlGeneratorService {
       const iva15 = invoice.subtotal15 * 0.15;
       const totalImpuesto = totalConImpuestos.ele('totalImpuesto');
       totalImpuesto.ele('codigo').txt('2'); // IVA
-      totalImpuesto.ele('codigoPorcentaje').txt('7'); // 15%
+      totalImpuesto.ele('codigoPorcentaje').txt('4'); // 15% (antes 7)
       totalImpuesto.ele('baseImponible').txt(invoice.subtotal15.toFixed(2));
       totalImpuesto.ele('valor').txt(iva15.toFixed(2));
     }
@@ -134,7 +134,7 @@ export class XmlGeneratorService {
       const iva20 = invoice.subtotal20 * 0.20;
       const totalImpuesto = totalConImpuestos.ele('totalImpuesto');
       totalImpuesto.ele('codigo').txt('2'); // IVA
-      totalImpuesto.ele('codigoPorcentaje').txt('5'); // 20%
+      totalImpuesto.ele('codigoPorcentaje').txt('8'); // 20% (antes 5)
       totalImpuesto.ele('baseImponible').txt(invoice.subtotal20.toFixed(2));
       totalImpuesto.ele('valor').txt(iva20.toFixed(2));
     }
@@ -148,7 +148,7 @@ export class XmlGeneratorService {
     const pago = pagos.ele('pago');
     pago.ele('formaPago').txt(invoice.formaPago || '01'); // 01 = Efectivo
     pago.ele('total').txt(invoice.total.toFixed(2));
-    
+
     if (invoice.plazoCredito && invoice.plazoCredito > 0) {
       pago.ele('plazo').txt(invoice.plazoCredito.toString());
       pago.ele('unidadTiempo').txt('dias');
@@ -156,21 +156,21 @@ export class XmlGeneratorService {
 
     // DETALLES
     const detalles = root.ele('detalles');
-    
+
     if (invoice.detalles && invoice.detalles.length > 0) {
       invoice.detalles.forEach((detalle: any) => {
         const detalleEle = detalles.ele('detalle');
         detalleEle.ele('codigoPrincipal').txt(detalle.codigoPrincipal || 'PROD001');
-        
+
         if (detalle.codigoAuxiliar) {
           detalleEle.ele('codigoAuxiliar').txt(detalle.codigoAuxiliar);
         }
-        
+
         detalleEle.ele('descripcion').txt(detalle.descripcion);
         detalleEle.ele('cantidad').txt(detalle.cantidad.toFixed(2));
         detalleEle.ele('precioUnitario').txt(detalle.precioUnitario.toFixed(6));
         detalleEle.ele('descuento').txt(detalle.descuento.toFixed(2));
-        
+
         const precioTotalSinImpuesto = (detalle.cantidad * detalle.precioUnitario) - detalle.descuento;
         detalleEle.ele('precioTotalSinImpuesto').txt(precioTotalSinImpuesto.toFixed(2));
 
@@ -181,7 +181,7 @@ export class XmlGeneratorService {
         impuesto.ele('codigoPorcentaje').txt(detalle.codigoPorcentaje || '0');
         impuesto.ele('tarifa').txt(detalle.tarifa.toFixed(0));
         impuesto.ele('baseImponible').txt(precioTotalSinImpuesto.toFixed(2));
-        
+
         const valorImpuesto = (precioTotalSinImpuesto * detalle.tarifa) / 100;
         impuesto.ele('valor').txt(valorImpuesto.toFixed(2));
       });
@@ -189,11 +189,11 @@ export class XmlGeneratorService {
 
     // INFORMACIÓN ADICIONAL
     const infoAdicional = root.ele('infoAdicional');
-    
+
     if (invoice.observaciones) {
       infoAdicional.ele('campoAdicional', { nombre: 'Observaciones' }).txt(invoice.observaciones);
     }
-    
+
     if (invoice.packager) {
       infoAdicional.ele('campoAdicional', { nombre: 'Empacadora' }).txt(invoice.packager.name);
     }
@@ -213,7 +213,7 @@ export class XmlGeneratorService {
     const dd = fecha.getDate().toString().padStart(2, '0');
     const mm = (fecha.getMonth() + 1).toString().padStart(2, '0');
     const yyyy = fecha.getFullYear().toString();
-    
+
     const tipoComprobante = '01'; // Factura
     const rucNumero = config.ruc.substring(0, 13).padStart(13, '0');
     const ambiente = config.ambienteSRI === 'PRODUCCION' ? '2' : '1';
@@ -223,19 +223,19 @@ export class XmlGeneratorService {
     const tipoEmision = config.tipoEmision === 'CONTINGENCIA' ? '2' : '1';
 
     // Primeros 48 dígitos
-    const clave48 = 
-      dd + mm + yyyy + 
-      tipoComprobante + 
-      rucNumero + 
-      ambiente + 
-      serie + 
-      secuencial + 
-      codigoNumerico + 
+    const clave48 =
+      dd + mm + yyyy +
+      tipoComprobante +
+      rucNumero +
+      ambiente +
+      serie +
+      secuencial +
+      codigoNumerico +
       tipoEmision;
 
     // Calcular dígito verificador
     const digitoVerificador = this.calcularModulo11(clave48);
-    
+
     return clave48 + digitoVerificador;
   }
 
@@ -295,9 +295,9 @@ export class XmlGeneratorService {
     if (!identificacion || identificacion === '9999999999999') {
       return '07'; // Consumidor final
     }
-    
+
     const len = identificacion.length;
-    
+
     if (len === 13) {
       return '04'; // RUC
     } else if (len === 10) {
@@ -305,7 +305,7 @@ export class XmlGeneratorService {
     } else if (len >= 6 && len <= 20) {
       return '06'; // Pasaporte
     }
-    
+
     return '07'; // Otros
   }
 }
