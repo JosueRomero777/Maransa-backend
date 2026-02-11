@@ -13,10 +13,8 @@ async function runSeeder() {
     console.log('🌱 Iniciando seeder...');
     await prisma.$connect();
 
-    await seeder.seedAdminUser();
-    await seeder.seedProviders();
-    await seeder.seedPackagers();
-    await seeder.seedPriceEstimationModule();
+    // Ejecutar el seeder completo usando onApplicationBootstrap
+    await seeder.onApplicationBootstrap();
 
     console.log('✅ Seeder completado exitosamente');
   } catch (error) {
