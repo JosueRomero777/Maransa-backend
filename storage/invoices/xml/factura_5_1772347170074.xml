@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>AGRUPACION MARANSA S.A.S</razonSocial>
+    <nombreComercial>AGRUPACION MARANSA S.A.S</nombreComercial>
+    <ruc>0791844573001</ruc>
+    <claveAcceso>2802202601079184457300110010300000000054437743118</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>030</ptoEmi>
+    <secuencial>000000005</secuencial>
+    <dirMatriz>M2HR+Q8V, Machala, Ecuador.</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>28/02/2026</fechaEmision>
+    <dirEstablecimiento>M2HR+Q8V, Machala, Ecuador.</dirEstablecimiento>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>04</tipoIdentificacionComprador>
+    <razonSocialComprador>Exportquilsa &amp; Productores Asociados S.A.</razonSocialComprador>
+    <identificacionComprador>0992708093001</identificacionComprador>
+    <direccionComprador> Km 17 ½ Vía Durán Boliche, Durán</direccionComprador>
+    <totalSinImpuestos>600.00</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>4</codigoPorcentaje>
+        <baseImponible>600.00</baseImponible>
+        <valor>90.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>690.00</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>16</formaPago>
+        <total>690.00</total>
+        <plazo>60</plazo>
+        <unidadTiempo>dias</unidadTiempo>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>ITEM-109319</codigoPrincipal>
+      <descripcion>prueba</descripcion>
+      <cantidad>1.00</cantidad>
+      <precioUnitario>600.000000</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>600.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>4</codigoPorcentaje>
+          <tarifa>15</tarifa>
+          <baseImponible>600.00</baseImponible>
+          <valor>90.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Empacadora">Exportquilsa &amp; Productores Asociados S.A.</campoAdicional>
+  </infoAdicional>
+</factura>

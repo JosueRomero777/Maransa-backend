@@ -4,7 +4,7 @@ import { RolUsuario } from '@prisma/client';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private reflector: Reflector) { }
 
   canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.getAllAndOverride<RolUsuario[]>('roles', [
@@ -12,18 +12,28 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    // Verificar si la ruta tiene el decorador @Public()
+    const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) {
+      return true;
+    }
+
     if (!requiredRoles) {
       return true;
     }
 
     const { user } = context.switchToHttp().getRequest();
-    
+
     if (!user) {
       throw new ForbiddenException('Usuario no autenticado');
     }
 
     const hasRole = requiredRoles.some((role) => user.role === role);
-    
+
     if (!hasRole) {
       throw new ForbiddenException('No tienes permisos para acceder a este recurso');
     }

@@ -48,7 +48,7 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
   constructor(
     private custodyTrackingSessionService: CustodyTrackingSessionService,
     private prisma: PrismaService,
-  ) {}
+  ) { }
 
   afterInit() {
     this.logger.log('WebSocket Custody Tracking Gateway initialized');
@@ -89,7 +89,8 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
     @MessageBody() payload: { custodyId: number; userId: number; token: string }
   ) {
     try {
-      const { custodyId, userId } = payload;
+      const custodyId = Number(payload.custodyId);
+      const userId = Number(payload.userId);
 
       const session = await this.custodyTrackingSessionService.startSession(custodyId, userId);
 
@@ -131,27 +132,26 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
     @MessageBody() payload: { custodyId: number; lat: number; lng: number; accuracy?: number }
   ) {
     try {
-      const { custodyId, lat, lng, accuracy } = payload;
+      const custodyId = Number(payload.custodyId);
+      const { lat, lng, accuracy } = payload;
       const userInfo = this.socketUserMap.get(client.id);
 
       if (!userInfo) {
         return { success: false, error: 'No session found' };
       }
 
-      const { userId } = userInfo;
+      const userId = Number(userInfo.userId);
 
       if (!this.custodyTrackingSessionService.hasActiveTracking(custodyId, userId)) {
         return { success: false, error: 'No active tracking session' };
       }
 
-      this.activeTrackers.set(custodyId, {
-        userId,
-        custodyId,
-        lat,
-        lng,
-        timestamp: Date.now(),
-        sessionId: ''
-      });
+      const activeTracker = this.activeTrackers.get(custodyId);
+      if (activeTracker) {
+        activeTracker.lat = lat;
+        activeTracker.lng = lng;
+        activeTracker.timestamp = Date.now();
+      }
 
       this.custodyTrackingSessionService.updateLastActivity(custodyId, userId);
 
@@ -187,7 +187,8 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
     @MessageBody() payload: { custodyId: number; userId: number }
   ) {
     try {
-      const { custodyId, userId } = payload;
+      const custodyId = Number(payload.custodyId);
+      const userId = Number(payload.userId);
 
       this.socketUserMap.set(client.id, { userId, custodyId });
       client.join(`custody:${custodyId}`);
@@ -211,13 +212,26 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
 
       const trackerUser = dbData?.usuarioTrackingActivo
         ? await this.prisma.user.findUnique({
-            where: { id: dbData.usuarioTrackingActivo },
-            select: { id: true, name: true, email: true }
-          })
+          where: { id: dbData.usuarioTrackingActivo },
+          select: { id: true, name: true, email: true }
+        })
         : null;
 
       if (!dbData?.trackingActivo) {
         return { success: false, error: 'No hay tracking activo para esta custodia' };
+      }
+
+      // Re-sincronizar el mapa de trackers activos si el que se une es el dueño
+      if (dbData.usuarioTrackingActivo === userId && !this.activeTrackers.has(custodyId)) {
+        this.activeTrackers.set(custodyId, {
+          userId,
+          custodyId,
+          lat: dbData.ubicacionActualLat || 0,
+          lng: dbData.ubicacionActualLng || 0,
+          timestamp: Date.now(),
+          sessionId: dbData.sessionIdTracking || ''
+        });
+        this.logger.log(`✓ Rastreador de custodia re-sincronizado: custody=${custodyId}, user=${userId}`);
       }
 
       client.emit('custody_spectator_joined_ack', {
@@ -285,7 +299,8 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
     @MessageBody() payload: { custodyId: number; userId: number }
   ) {
     try {
-      const { custodyId, userId } = payload;
+      const custodyId = Number(payload.custodyId);
+      const userId = Number(payload.userId);
 
       const activeTracker = this.activeTrackers.get(custodyId);
 
@@ -295,13 +310,14 @@ export class CustodyTrackingGateway implements OnGatewayInit, OnGatewayConnectio
 
       await this.custodyTrackingSessionService.endSession(custodyId, activeTracker.sessionId);
       this.activeTrackers.delete(custodyId);
-      client.leave(`custody:${custodyId}`);
 
       this.server.to(`custody:${custodyId}`).emit('custody_tracking_stopped', {
         userId,
         custodyId,
         timestamp: Date.now()
       });
+
+      client.leave(`custody:${custodyId}`);
 
       return { success: true };
     } catch (error) {

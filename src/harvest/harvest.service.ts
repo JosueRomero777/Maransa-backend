@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { 
-  CreateHarvestDto, 
-  UpdateHarvestDto, 
+import {
+  CreateHarvestDto,
+  UpdateHarvestDto,
   HarvestFilterDto,
   DefineHarvestDto
 } from './dto/harvest.dto';
@@ -14,14 +14,14 @@ import * as fs from 'fs';
 export class HarvestService {
   private readonly logger = new Logger(HarvestService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createHarvestDto: CreateHarvestDto, assignedUserId: number, files?: Array<Express.Multer.File>) {
     try {
       // Verificar que el pedido existe y está aprobado por laboratorio
       const order = await this.prisma.order.findUnique({
         where: { id: createHarvestDto.orderId },
-        include: { 
+        include: {
           cosecha: true,
           laboratorio: true,
           provider: true
@@ -185,7 +185,10 @@ export class HarvestService {
     try {
       const harvests = await this.prisma.harvest.findMany({
         where: {
-          estado: EstadoCosecha.APROBADO
+          estado: EstadoCosecha.APROBADO,
+          order: {
+            logistica: { is: null }
+          }
         },
         include: {
           order: {
@@ -582,24 +585,24 @@ export class HarvestService {
 
   private async saveFiles(files: Array<Express.Multer.File>, orderId: number, tipo: string): Promise<string[]> {
     const savedFiles: string[] = [];
-    
+
     for (const file of files) {
       try {
         const uploadDir = path.join('uploads', 'harvest', orderId.toString(), tipo);
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
-        
+
         const filename = `${Date.now()}-${file.originalname}`;
         const filepath = path.join(uploadDir, filename);
-        
+
         fs.writeFileSync(filepath, file.buffer);
         savedFiles.push(filepath);
       } catch (error) {
         this.logger.error('Error saving file:', error);
       }
     }
-    
+
     return savedFiles;
   }
 

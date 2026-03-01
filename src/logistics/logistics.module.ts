@@ -4,10 +4,14 @@ import { LogisticsService } from './logistics.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { TrackingModule } from '../tracking/tracking.module';
+import { CustodyTrackingModule } from '../custody-tracking/custody-tracking.module';
 
 @Module({
   imports: [
     PrismaModule,
+    TrackingModule,
+    CustodyTrackingModule,
     MulterModule.register({
       storage: memoryStorage(), // Usar memoria en lugar de disco
       limits: {
@@ -27,4 +31,4 @@ import { memoryStorage } from 'multer';
   providers: [LogisticsService],
   exports: [LogisticsService],
 })
-export class LogisticsModule {}
+export class LogisticsModule { }

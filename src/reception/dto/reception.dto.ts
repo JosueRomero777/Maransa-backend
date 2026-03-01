@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsNotEmpty, Min, Max, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsNotEmpty, Min, Max, IsBoolean, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateReceptionDto {
@@ -6,6 +6,11 @@ export class CreateReceptionDto {
   @IsNumber()
   @Type(() => Number)
   orderId: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  packagerId?: number;
 
   @IsNotEmpty()
   @IsDateString()
@@ -21,21 +26,20 @@ export class CreateReceptionDto {
   @Min(0.01, { message: 'El peso debe ser mayor a 0' })
   pesoRecibido: number;
 
-  @IsOptional()
   @IsBoolean()
-  calidadValidada?: boolean;
+  calidadValidada: boolean;
 
-  @IsOptional()
   @IsBoolean()
-  loteAceptado?: boolean;
+  loteAceptado: boolean;
 
-  @IsOptional()
+  @ValidateIf((o) => o.loteAceptado === false)
+  @IsNotEmpty({ message: 'El motivo de rechazo es obligatorio cuando el lote no es aceptado' })
   @IsString()
   motivoRechazo?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  clasificacionFinal?: string;
+  clasificacionFinal: string;
 
   @IsNotEmpty()
   @IsNumber()
@@ -152,7 +156,7 @@ export class ReceptionMarginDto {
 export class ReceptionResponse {
   id: number;
   orderId: number;
-  fechaLlegada: Date;
+  fechaLlegada: string;
   horaLlegada: string;
   pesoRecibido?: number;
   calidadValidada: boolean;
@@ -172,7 +176,8 @@ export class ReceptionResponse {
       location: string;
     };
     cantidadEstimada: number;
-    precioEstimadoCompra: number;
+    precioEstimadoCompra?: number;
+    precioEstimadoVenta?: number;
     fechaCreacion: Date;
   };
 }

@@ -16,7 +16,7 @@ export class TrackingSessionService {
     sessionId: string;
   }>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Inicia una sesión de tracking para un usuario
@@ -33,10 +33,21 @@ export class TrackingSessionService {
       );
 
       if (userActiveSession) {
-        throw new HttpException(
-          'El usuario ya tiene un rastreo activo en otra logística. Finaliza ese rastreo antes de iniciar uno nuevo.',
-          HttpStatus.CONFLICT
-        );
+        // Verificar si la logística de la sesión activa sigue existiendo en BD
+        const logisticsExists = await this.prisma.logistics.findUnique({
+          where: { id: userActiveSession.logisticsId },
+          select: { id: true }
+        });
+
+        if (logisticsExists) {
+          throw new HttpException(
+            'El usuario ya tiene un rastreo activo en otra logística. Finaliza ese rastreo antes de iniciar uno nuevo.',
+            HttpStatus.CONFLICT
+          );
+        } else {
+          // Sesión fantasma: la logística ya no existe. Limpiar.
+          this.activeSessions.delete(userActiveSession.logisticsId);
+        }
       }
 
       const activeLogisticsInDb = await this.prisma.logistics.findFirst({
@@ -161,6 +172,29 @@ export class TrackingSessionService {
     } catch (error) {
       this.logger.error(`Error cerrando sesión: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Termina una sesión de forma forzosa (sin validar sessionId)
+   * Útil para limpiezas al eliminar/completar logísticas
+   */
+  async forceEndSession(logisticsId: number): Promise<void> {
+    try {
+      this.activeSessions.delete(logisticsId);
+
+      await this.prisma.logistics.update({
+        where: { id: logisticsId },
+        data: {
+          trackingActivo: false,
+          usuarioTrackingActivo: null,
+          sessionIdTracking: null
+        }
+      }).catch(() => { }); // Ignorar si ya fue eliminado de BD
+
+      this.logger.log(`✓ Sesión forzada a cerrar (si existía) para logística: ${logisticsId}`);
+    } catch (error) {
+      this.logger.error(`Error en forceEndSession: ${error.message}`);
     }
   }
 

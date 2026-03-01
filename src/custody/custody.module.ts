@@ -3,12 +3,14 @@ import { CustodyController } from './custody.controller';
 import { CustodyService } from './custody.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MulterModule } from '@nestjs/platform-express';
+import { CustodyTrackingModule } from '../custody-tracking/custody-tracking.module';
 import { diskStorage } from 'multer';
 import * as path from 'path';
 
 @Module({
   imports: [
     PrismaModule,
+    CustodyTrackingModule,
     MulterModule.register({
       storage: diskStorage({
         destination: (req, file, cb) => {
@@ -37,4 +39,4 @@ import * as path from 'path';
   providers: [CustodyService],
   exports: [CustodyService],
 })
-export class CustodyModule {}
+export class CustodyModule { }

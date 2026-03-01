@@ -4,7 +4,7 @@ import { RolUsuario, TipoProveedor } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { seedPriceEstimationData } from './price-estimation.seed';
 import { InvoicingSeederService } from './invoicing-seeder.service';
-import { ThesisSeederService } from './thesis-seeder.service';
+
 
 @Injectable()
 export class SeederService implements OnApplicationBootstrap {
@@ -13,7 +13,7 @@ export class SeederService implements OnApplicationBootstrap {
   constructor(
     private prisma: PrismaService,
     private invoicingSeeder: InvoicingSeederService,
-    private thesisSeeder: ThesisSeederService,
+
   ) { }
 
   async onApplicationBootstrap() {
@@ -22,7 +22,7 @@ export class SeederService implements OnApplicationBootstrap {
     // await this.seedPackagers(); // Desactivado: usar solo datos de tesis
     await this.seedPriceEstimationModule();
     await this.invoicingSeeder.seed();
-    await this.thesisSeeder.seed(); // Seed de datos específicos de tesis
+
   }
 
   public async seedAdminUser() {

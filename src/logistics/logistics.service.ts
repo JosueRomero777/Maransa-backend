@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { 
-  CreateLogisticsDto, 
-  UpdateLogisticsDto, 
+import {
+  CreateLogisticsDto,
+  UpdateLogisticsDto,
   LogisticsFilterDto,
   AssignVehicleDto,
   UpdateRouteDto
 } from './dto/logistics.dto';
-import { EstadoLogistica, EstadoPedido } from '@prisma/client';
+import { EstadoLogistica, EstadoPedido, EstadoCustodia } from '@prisma/client';
+import { TrackingSessionService } from '../tracking/tracking-session.service';
+import { CustodyTrackingSessionService } from '../custody-tracking/custody-tracking-session.service';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -15,14 +17,18 @@ import * as fs from 'fs';
 export class LogisticsService {
   private readonly logger = new Logger(LogisticsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trackingSessionService: TrackingSessionService,
+    private custodyTrackingSessionService: CustodyTrackingSessionService
+  ) { }
 
   async create(createLogisticsDto: CreateLogisticsDto, assignedUserId: number, files?: Array<Express.Multer.File>) {
     try {
       // Verificar que el pedido existe y está aprobado por laboratorio
       const order = await this.prisma.order.findUnique({
         where: { id: createLogisticsDto.orderId },
-        include: { 
+        include: {
           logistica: true,
           laboratorio: true,
           provider: true
@@ -69,7 +75,8 @@ export class LogisticsService {
             include: {
               provider: true,
               packager: true,
-              laboratorio: true
+              laboratorio: true,
+              cosecha: true
             }
           },
           assignedUser: true
@@ -133,7 +140,8 @@ export class LogisticsService {
               include: {
                 provider: true,
                 packager: true,
-                laboratorio: true
+                laboratorio: true,
+                cosecha: true
               }
             },
             assignedUser: true
@@ -356,6 +364,15 @@ export class LogisticsService {
         throw new BadRequestException('Solo se puede iniciar ruta de logística asignada');
       }
 
+      // Validar que tenga medios y evidencias de carga
+      if (!logistics.recursosUtilizados || logistics.recursosUtilizados.toString().trim() === '') {
+        throw new BadRequestException('Debe registrar los medios utilizados antes de iniciar el transporte (vines, tanques, oxígeno)');
+      }
+
+      if (!logistics.evidenciasCarga || logistics.evidenciasCarga.length === 0) {
+        throw new BadRequestException('Debe subir al menos una evidencia de carga antes de iniciar el transporte');
+      }
+
       const updatedLogistics = await this.prisma.logistics.update({
         where: { id },
         data: {
@@ -406,15 +423,24 @@ export class LogisticsService {
         throw new BadRequestException('Solo se puede completar una ruta en tránsito');
       }
 
-      // Procesar evidencias de transporte
-      const evidenciasTransporte = files ? await this.saveFiles(files, logistics.orderId, 'transporte') : [];
+      // Verificar que exista al menos una evidencia de tipo "condiciones"
+      const tieneEvidenciaCondiciones = logistics.evidenciasTransporte?.some(file =>
+        file.includes('-condiciones-')
+      );
+
+      if (!tieneEvidenciaCondiciones) {
+        throw new BadRequestException('Debe subir al menos una evidencia de condiciones de transporte antes de completar la ruta');
+      }
+
+      // Procesar evidencias de transporte final (si se enviaron en esta llamada)
+      const nuevasEvidencias = files ? await this.saveFiles(files, logistics.orderId, 'transporte') : [];
 
       const updatedLogistics = await this.prisma.logistics.update({
         where: { id },
         data: {
           estado: EstadoLogistica.COMPLETADO,
           fechaFinalizacion: new Date(),
-          evidenciasTransporte: [...logistics.evidenciasTransporte, ...evidenciasTransporte],
+          evidenciasTransporte: [...logistics.evidenciasTransporte, ...nuevasEvidencias],
           incidentes: updateRouteDto.incidentes,
           observaciones: updateRouteDto.observaciones || logistics.observaciones,
           updatedAt: new Date()
@@ -439,6 +465,40 @@ export class LogisticsService {
 
       // Registrar evento
       await this.logEvent(logistics.orderId, logistics.assignedUserId, 'ruta_completada', 'Ruta de logística completada', updateRouteDto);
+
+      // Limpiar sesión de tracking si existe
+      await this.trackingSessionService.forceEndSession(id);
+
+      // --- Sincronización con Custodia ---
+      // Si existe una custodia asociada, completarla también
+      const associatedCustody = await this.prisma.custody.findFirst({
+        where: {
+          logisticsId: id,
+          estado: { not: EstadoCustodia.COMPLETADO }
+        }
+      });
+
+      if (associatedCustody) {
+        await this.prisma.custody.update({
+          where: { id: associatedCustody.id },
+          data: {
+            estado: EstadoCustodia.COMPLETADO,
+            fechaFinalizacion: new Date(),
+            updatedAt: new Date()
+          }
+        });
+
+        // Limpiar sesión de tracking de custodia si existe
+        await this.custodyTrackingSessionService.forceEndSession(associatedCustody.id);
+
+        this.logger.log(`✓ Custodia ${associatedCustody.id} completada automáticamente por logística ${id}`);
+
+        // Actualizar estado del pedido explícitamente a CUSTODIA_COMPLETADA si era el último paso
+        await this.prisma.order.update({
+          where: { id: logistics.orderId },
+          data: { estado: EstadoPedido.CUSTODIA_COMPLETADA }
+        });
+      }
 
       return this.formatLogisticsResponse(updatedLogistics);
     } catch (error) {
@@ -583,6 +643,9 @@ export class LogisticsService {
 
   async remove(id: number) {
     try {
+      // Limpiar sesión de tracking si existe antes de eliminar
+      await this.trackingSessionService.forceEndSession(id);
+
       await this.prisma.logistics.delete({
         where: { id }
       });
@@ -745,42 +808,42 @@ export class LogisticsService {
     }
 
     const savedFiles: string[] = [];
-    
+
     for (const file of files) {
       try {
         // Usar ruta absoluta desde el directorio del proyecto
         const uploadDir = path.join(process.cwd(), 'uploads', 'logistics', orderId.toString());
-        
+
         // Crear directorio si no existe
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
           this.logger.log(`Created directory: ${uploadDir}`);
         }
-        
+
         // Generar nombre único para el archivo
         const timestamp = Date.now();
         const random = Math.floor(Math.random() * 1000000000);
         const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const filename = `${timestamp}-${random}-${sanitizedName}`;
+        const filename = `${timestamp}-${random}-${tipo}-${sanitizedName}`;
         const filepath = path.join(uploadDir, filename);
-        
+
         // Guardar el archivo
         fs.writeFileSync(filepath, file.buffer);
         savedFiles.push(filename);
-        
+
         this.logger.log(`File saved successfully: ${filepath}`);
-        
+
         // Verificar que el archivo se guardó correctamente
         if (!fs.existsSync(filepath)) {
           throw new Error(`File was not saved: ${filepath}`);
         }
-        
+
       } catch (error) {
         this.logger.error(`Error saving file ${file.originalname}:`, error);
         throw error; // Propagar el error para que el usuario sepa que falló
       }
     }
-    
+
     return savedFiles;
   }
 
@@ -879,7 +942,8 @@ export class LogisticsService {
         fechaDefinitivaCosecha: logistics.order.fechaDefinitivaCosecha,
         provider: logistics.order.provider,
         packager: logistics.order.packager,
-        laboratorio: logistics.order.laboratorio
+        laboratorio: logistics.order.laboratorio,
+        cosecha: logistics.order.cosecha
       } : null,
       assignedUser: logistics.assignedUser ? {
         id: logistics.assignedUser.id,

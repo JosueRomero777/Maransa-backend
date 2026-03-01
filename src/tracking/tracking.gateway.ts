@@ -43,7 +43,7 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   // Mapa de usuarios activos: logisticsId -> TrackedUser
   private activeTrackers = new Map<number, TrackedUser>();
-  
+
   // Mapa de espectadores: logisticsId -> Spectator[]
   private spectators = new Map<number, Spectator[]>();
 
@@ -53,11 +53,11 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   constructor(
     private trackingSessionService: TrackingSessionService,
     private prisma: PrismaService,
-  ) {}
+  ) { }
 
   afterInit(server: Server) {
     this.logger.log('🚀 WebSocket Tracking Gateway initialized');
-    
+
     // Limpiar sesiones expiradas cada 5 minutos
     setInterval(() => {
       this.trackingSessionService.cleanupExpiredSessions();
@@ -70,12 +70,12 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   handleDisconnect(client: Socket) {
     this.logger.log(`✗ Cliente desconectado: ${client.id}`);
-    
+
     // Buscar y limpiar usuario rastreador
     const userInfo = this.socketUserMap.get(client.id);
     if (userInfo) {
       const { logisticsId, userId } = userInfo;
-      
+
       // Si era el rastreador activo, detener tracking
       const activeTracker = this.activeTrackers.get(logisticsId);
       if (activeTracker?.userId === userId) {
@@ -102,7 +102,8 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody() payload: { logisticsId: number; userId: number; token: string }
   ) {
     try {
-      const { logisticsId, userId } = payload;
+      const logisticsId = Number(payload.logisticsId);
+      const userId = Number(payload.userId);
 
       this.logger.log(`▶️ start_tracking: logistics=${logisticsId}, user=${userId}`);
 
@@ -160,29 +161,28 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody() payload: { logisticsId: number; lat: number; lng: number; accuracy?: number }
   ) {
     try {
-      const { logisticsId, lat, lng, accuracy } = payload;
+      const logisticsId = Number(payload.logisticsId);
+      const { lat, lng, accuracy } = payload;
       const userInfo = this.socketUserMap.get(client.id);
 
       if (!userInfo) {
         return { success: false, error: 'No session found' };
       }
 
-      const { userId } = userInfo;
+      const userId = Number(userInfo.userId);
 
       // Verificar que el usuario tiene rastreo activo
       if (!this.trackingSessionService.hasActiveTracking(logisticsId, userId)) {
         return { success: false, error: 'No active tracking session' };
       }
 
-      // Actualizar ubicación
-      this.activeTrackers.set(logisticsId, {
-        userId,
-        logisticsId,
-        lat,
-        lng,
-        timestamp: Date.now(),
-        sessionId: ''
-      });
+      // Actualizar solo las coordenadas y el tiempo
+      const activeTracker = this.activeTrackers.get(logisticsId);
+      if (activeTracker) {
+        activeTracker.lat = lat;
+        activeTracker.lng = lng;
+        activeTracker.timestamp = Date.now();
+      }
 
       // Actualizar último acceso en servicio de sesión
       this.trackingSessionService.updateLastActivity(logisticsId, userId);
@@ -226,7 +226,8 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody() payload: { logisticsId: number; userId: number }
   ) {
     try {
-      const { logisticsId, userId } = payload;
+      const logisticsId = Number(payload.logisticsId);
+      const userId = Number(payload.userId);
 
       this.logger.log(`👁️ Usuario ${userId} se unió como espectador a logística ${logisticsId}`);
 
@@ -257,14 +258,27 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
       const trackerUser = dbData?.usuarioTrackingActivo
         ? await this.prisma.user.findUnique({
-            where: { id: dbData.usuarioTrackingActivo },
-            select: { id: true, name: true, email: true }
-          })
+          where: { id: dbData.usuarioTrackingActivo },
+          select: { id: true, name: true, email: true }
+        })
         : null;
 
       // Verificar si hay tracking activo
       if (!dbData?.trackingActivo) {
         return { success: false, error: 'No hay tracking activo para esta logística' };
+      }
+
+      // Re-sincronizar el mapa de trackers activos si el que se une es el dueño
+      if (dbData.usuarioTrackingActivo === userId && !this.activeTrackers.has(logisticsId)) {
+        this.activeTrackers.set(logisticsId, {
+          userId,
+          logisticsId,
+          lat: dbData.ubicacionActualLat || 0,
+          lng: dbData.ubicacionActualLng || 0,
+          timestamp: Date.now(),
+          sessionId: dbData.sessionIdTracking || ''
+        });
+        this.logger.log(`✓ Rastreador re-sincronizado en mapa activo: logistics=${logisticsId}, user=${userId}`);
       }
 
       // Enviar confirmación al espectador que se unió
@@ -343,7 +357,8 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @MessageBody() payload: { logisticsId: number; userId: number }
   ) {
     try {
-      const { logisticsId, userId } = payload;
+      const logisticsId = Number(payload.logisticsId);
+      const userId = Number(payload.userId);
 
       const activeTracker = this.activeTrackers.get(logisticsId);
 
@@ -353,19 +368,19 @@ export class TrackingGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
       // Detener sesión
       await this.trackingSessionService.endSession(logisticsId, activeTracker.sessionId);
-      
+
       // Remover rastreador activo
       this.activeTrackers.delete(logisticsId);
 
-      // Dejar sala
-      client.leave(`tracking:${logisticsId}`);
-
-      // Notificar a todos
+      // Notificar a todos ANTES de que el cliente deje la sala
       this.server.to(`tracking:${logisticsId}`).emit('tracking_stopped', {
         userId,
         logisticsId,
         timestamp: Date.now()
       });
+
+      // Dejar sala
+      client.leave(`tracking:${logisticsId}`);
 
       this.logger.log(`⏹️ Tracking detenido: logistics=${logisticsId}, user=${userId}`);
 

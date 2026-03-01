@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcryptjs';
 import { User } from '@prisma/client';
 
@@ -170,5 +172,83 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async updateUserProfile(userId: number, updateProfileDto: UpdateProfileDto): Promise<Omit<User, 'password'>> {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    if (!existingUser) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    if (updateProfileDto.email && updateProfileDto.email !== existingUser.email) {
+      const emailInUse = await this.prisma.user.findUnique({
+        where: { email: updateProfileDto.email },
+        select: { id: true },
+      });
+
+      if (emailInUse) {
+        throw new ConflictException('El email ya está en uso por otro usuario');
+      }
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: updateProfileDto.name,
+        email: updateProfileDto.email,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return updatedUser;
+  }
+
+  async changePassword(userId: number, changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        password: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta');
+    }
+
+    const isSamePassword = await bcrypt.compare(changePasswordDto.newPassword, user.password);
+    if (isSamePassword) {
+      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual');
+    }
+
+    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+      },
+    });
+
+    return {
+      message: 'Contraseña actualizada correctamente',
+    };
   }
 }

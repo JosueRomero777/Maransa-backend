@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { 
-  CreateLaboratoryDto, 
-  UpdateLaboratoryDto, 
+import {
+  CreateLaboratoryDto,
+  UpdateLaboratoryDto,
   LaboratoryFilterDto,
-  ReevaluationDto 
+  ReevaluationDto
 } from './dto/laboratory.dto';
 import { EstadoLaboratorio, EstadoPedido } from '@prisma/client';
 import * as path from 'path';
@@ -14,7 +14,7 @@ import * as fs from 'fs';
 export class LaboratoryService {
   private readonly logger = new Logger(LaboratoryService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createLaboratoryDto: CreateLaboratoryDto, analistaId: number, files?: Array<Express.Multer.File>) {
     try {
@@ -205,7 +205,7 @@ export class LaboratoryService {
   async getPendingAnalysis() {
     try {
       const laboratories = await this.prisma.laboratory.findMany({
-        where: { 
+        where: {
           estado: { in: [EstadoLaboratorio.PENDIENTE, EstadoLaboratorio.EN_REEVALUACION] }
         },
         include: {
@@ -415,7 +415,7 @@ export class LaboratoryService {
       // Actualizar estado del pedido a cancelado
       await this.prisma.order.update({
         where: { id: laboratory.orderId },
-        data: { 
+        data: {
           estado: EstadoPedido.CANCELADO,
           observaciones: `${laboratory.order.observaciones || ''}\n\nDescartado por laboratorio: ${justificacion}`
         }
@@ -531,17 +531,17 @@ export class LaboratoryService {
 
   private async saveFiles(files: Array<Express.Multer.File>, orderId: number): Promise<string[]> {
     const savedFiles: string[] = [];
-    
+
     for (const file of files) {
       try {
         const uploadDir = path.join('uploads', 'laboratory', orderId.toString());
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
-        
+
         const filename = `${Date.now()}-${file.originalname}`;
         const filepath = path.join(uploadDir, filename);
-        
+
         fs.writeFileSync(filepath, file.buffer);
         // Store only the filename, not the full path
         savedFiles.push(filename);
@@ -549,7 +549,7 @@ export class LaboratoryService {
         this.logger.error('Error saving file:', error);
       }
     }
-    
+
     return savedFiles;
   }
 
@@ -565,7 +565,7 @@ export class LaboratoryService {
 
       const newFiles = files ? await this.saveFiles(files, laboratory.orderId) : [];
       const allFiles = [...(laboratory.archivosAdjuntos || []), ...newFiles];
-      
+
       const updatedLaboratory = await this.prisma.laboratory.update({
         where: { id: laboratoryId },
         data: {
@@ -588,6 +588,7 @@ export class LaboratoryService {
   }
 
   async downloadFile(laboratoryId: number, filename: string, res: any) {
+    const decodedFilename = decodeURIComponent(filename);
     const laboratory = await this.prisma.laboratory.findUnique({
       where: { id: laboratoryId }
     });
@@ -597,20 +598,60 @@ export class LaboratoryService {
     }
 
     const orderId = laboratory.orderId;
-    const filePath = path.join(process.cwd(), 'uploads', 'laboratory', orderId.toString(), filename);
-    
+    const filePath = path.join(process.cwd(), 'uploads', 'laboratory', orderId.toString(), decodedFilename);
+
+    const uploadDir = path.resolve(process.cwd(), 'uploads', 'laboratory', orderId.toString());
+    const resolvedPath = path.resolve(filePath);
+
     // Security check: ensure the file path doesn't escape the uploads directory
-    const uploadDir = path.join(process.cwd(), 'uploads', 'laboratory', orderId.toString());
-    const normalizedPath = path.normalize(filePath);
-    if (!normalizedPath.startsWith(uploadDir)) {
+    if (!resolvedPath.startsWith(uploadDir + path.sep) && resolvedPath !== uploadDir) {
+      this.logger.error(`Security violation: Attempted access to ${resolvedPath} outside of ${uploadDir}`);
       throw new BadRequestException('Invalid file path');
     }
-    
+
     if (!fs.existsSync(filePath)) {
       throw new BadRequestException('Archivo no encontrado');
     }
-    
-    return res.download(filePath);
+
+    // Determine MIME Type based on extension
+    const ext = path.extname(filename).toLowerCase();
+    let contentType = 'application/octet-stream';
+
+    const mimeMap: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp'
+    };
+
+    if (mimeMap[ext]) {
+      contentType = mimeMap[ext];
+    }
+
+    const stats = fs.statSync(filePath);
+    this.logger.log(`Serving file: ${filename}, Content-Type: ${contentType}, Size: ${stats.size} bytes`);
+
+    // Set headers explicitly for inline preview
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+
+    // Fix for: Framing 'http://localhost:8080/' violates the following Content Security Policy directive: "frame-ancestors 'self'".
+    // We allow the frontend origin to frame this response.
+    const frontendOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+    res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${frontendOrigin}`);
+
+    res.type(contentType);
+
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        this.logger.error(`Error sending file ${filename}:`, err);
+        if (!res.headersSent) {
+          res.status(500).send('Error al enviar el archivo');
+        }
+      }
+    });
   }
 
   private async logEvent(orderId: number, userId: number, accion: string, descripcion: string, datosNuevos?: any) {

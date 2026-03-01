@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EstadoPedido } from '@prisma/client';
+import { InvoicingService } from '../invoicing/invoicing.service';
 import { 
   CreateReceptionDto, 
   UpdateReceptionDto, 
@@ -9,7 +11,40 @@ import {
 
 @Injectable()
 export class ReceptionService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ReceptionService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private invoicingService: InvoicingService,
+  ) {}
+
+  private async validateArrivalDateAgainstLogisticsCompletion(orderId: number, fechaLlegada: string | Date): Promise<void> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        logistica: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const fechaFinalizacionLogistica = order.logistica?.fechaFinalizacion;
+
+    if (!fechaFinalizacionLogistica) {
+      return;
+    }
+
+    const fechaLlegadaNormalizada = this.normalizeToUTCMidnight(fechaLlegada);
+    const fechaFinalizacionNormalizada = this.normalizeToUTCMidnight(fechaFinalizacionLogistica);
+
+    if (fechaLlegadaNormalizada < fechaFinalizacionNormalizada) {
+      throw new BadRequestException(
+        'La fecha de llegada no puede ser anterior a la fecha de finalización de logística',
+      );
+    }
+  }
 
   /**
    * Normaliza una fecha a medianoche UTC
@@ -34,13 +69,19 @@ export class ReceptionService {
     ));
   }
 
-  async create(createReceptionDto: CreateReceptionDto, userId: string): Promise<ReceptionResponse> {
+  private formatToUTCDateString(fecha: Date): string {
+    return fecha.toISOString().split('T')[0];
+  }
+
+  async create(createReceptionDto: CreateReceptionDto, userId: number): Promise<ReceptionResponse> {
     try {
       // Verificar que la orden existe
       const order = await this.prisma.order.findUnique({
         where: { id: createReceptionDto.orderId },
         include: {
-          provider: true
+          provider: true,
+          logistica: true,
+          packager: true,
         }
       });
 
@@ -57,28 +98,96 @@ export class ReceptionService {
         throw new BadRequestException('Reception already exists for this order');
       }
 
-      const reception = await this.prisma.reception.create({
-        data: {
-          orderId: createReceptionDto.orderId,
-          fechaLlegada: this.normalizeToUTCMidnight(createReceptionDto.fechaLlegada),
-          horaLlegada: createReceptionDto.horaLlegada,
-          pesoRecibido: createReceptionDto.pesoRecibido,
-          calidadValidada: createReceptionDto.calidadValidada || false,
-          loteAceptado: createReceptionDto.loteAceptado || false,
-          motivoRechazo: createReceptionDto.motivoRechazo,
-          clasificacionFinal: createReceptionDto.clasificacionFinal,
-          precioFinalVenta: createReceptionDto.precioFinalVenta,
-          condicionesVenta: createReceptionDto.condicionesVenta,
-          observaciones: createReceptionDto.observaciones
-        },
-        include: {
-          order: {
-            include: {
-              provider: true
+      await this.validateArrivalDateAgainstLogisticsCompletion(
+        createReceptionDto.orderId,
+        createReceptionDto.fechaLlegada,
+      );
+
+      let packagerId = order.packagerId;
+
+      if (!packagerId && createReceptionDto.packagerId) {
+        const packager = await this.prisma.packager.findUnique({
+          where: { id: createReceptionDto.packagerId },
+          select: { id: true },
+        });
+
+        if (!packager) {
+          throw new BadRequestException('La empacadora seleccionada no existe');
+        }
+
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { packagerId: createReceptionDto.packagerId },
+        });
+
+        packagerId = createReceptionDto.packagerId;
+      }
+
+      if (!packagerId) {
+        throw new BadRequestException('La orden no tiene empacadora asignada. Selecciona una empacadora antes de crear la recepción');
+      }
+
+      const reception = await this.prisma.$transaction(async (tx) => {
+        const createdReception = await tx.reception.create({
+          data: {
+            orderId: createReceptionDto.orderId,
+            fechaLlegada: this.normalizeToUTCMidnight(createReceptionDto.fechaLlegada),
+            horaLlegada: createReceptionDto.horaLlegada,
+            pesoRecibido: createReceptionDto.pesoRecibido,
+            calidadValidada: createReceptionDto.calidadValidada || false,
+            loteAceptado: createReceptionDto.loteAceptado || false,
+            motivoRechazo: createReceptionDto.motivoRechazo,
+            clasificacionFinal: createReceptionDto.clasificacionFinal,
+            precioFinalVenta: createReceptionDto.precioFinalVenta,
+            condicionesVenta: createReceptionDto.condicionesVenta,
+            observaciones: createReceptionDto.observaciones
+          },
+          include: {
+            order: {
+              include: {
+                provider: true
+              }
             }
           }
+        });
+
+        const nonUpdatableStatuses = new Set<EstadoPedido>([
+          EstadoPedido.RECIBIDO,
+          EstadoPedido.FACTURADO,
+          EstadoPedido.FINALIZADO,
+          EstadoPedido.CANCELADO,
+          EstadoPedido.DESCARTADO,
+        ]);
+
+        if (!nonUpdatableStatuses.has(order.estado as EstadoPedido)) {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { estado: EstadoPedido.RECIBIDO },
+          });
+
+          await tx.eventLog.create({
+            data: {
+              orderId: order.id,
+              userId,
+              accion: 'cambio_estado',
+              descripcion: `Estado cambiado de ${order.estado} a ${EstadoPedido.RECIBIDO} por registro de recepción`,
+            },
+          });
         }
+
+        return createdReception;
       });
+
+      try {
+        const autoInvoiceResult = await this.invoicingService.createInvoiceFromReception(createReceptionDto.orderId);
+        if (autoInvoiceResult?.created) {
+          this.logger.log(`🧾 Factura automática generada para la orden ${order.codigo}`);
+        } else {
+          this.logger.log(`ℹ️ Factura automática omitida para orden ${order.codigo}: ${autoInvoiceResult?.reason || 'sin detalle'}`);
+        }
+      } catch (invoiceError: any) {
+        this.logger.error(`❌ No se pudo generar factura automática para orden ${order.codigo}: ${invoiceError?.message || invoiceError}`);
+      }
 
       return this.formatReceptionResponse(reception);
     } catch (error) {
@@ -145,9 +254,9 @@ export class ReceptionService {
         OR: [
           { observaciones: { contains: search, mode: 'insensitive' } },
           { clasificacionFinal: { contains: search, mode: 'insensitive' } },
-          { order: { codigo: { contains: search, mode: 'insensitive' } } },
-          { order: { provider: { name: { contains: search, mode: 'insensitive' } } } },
-          { order: { provider: { company: { contains: search, mode: 'insensitive' } } } }
+          { order: { is: { codigo: { contains: search, mode: 'insensitive' } } } },
+          { order: { is: { provider: { is: { name: { contains: search, mode: 'insensitive' } } } } } },
+          { order: { is: { packager: { is: { name: { contains: search, mode: 'insensitive' } } } } } }
         ]
       });
     }
@@ -206,18 +315,31 @@ export class ReceptionService {
     try {
       // Verificar que la recepción existe
       const existingReception = await this.prisma.reception.findUnique({
-        where: { id }
+        where: { id },
+        select: {
+          id: true,
+          orderId: true,
+        },
       });
 
       if (!existingReception) {
         throw new NotFoundException('Reception not found');
       }
 
+      if (updateReceptionDto.fechaLlegada) {
+        await this.validateArrivalDateAgainstLogisticsCompletion(
+          existingReception.orderId,
+          updateReceptionDto.fechaLlegada,
+        );
+      }
+
       const reception = await this.prisma.reception.update({
         where: { id },
         data: {
           ...updateReceptionDto,
-          fechaLlegada: updateReceptionDto.fechaLlegada ? new Date(updateReceptionDto.fechaLlegada) : undefined
+          fechaLlegada: updateReceptionDto.fechaLlegada
+            ? this.normalizeToUTCMidnight(updateReceptionDto.fechaLlegada)
+            : undefined
         },
         include: {
           order: {
@@ -272,7 +394,18 @@ export class ReceptionService {
         }
       },
       include: {
-        provider: true
+        provider: true,
+        packager: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        logistica: {
+          select: {
+            fechaFinalizacion: true,
+          },
+        },
       },
       orderBy: { fechaCreacion: 'desc' }
     });
@@ -284,10 +417,17 @@ export class ReceptionService {
         name: order.provider.name,
         location: order.provider.location
       },
+      packager: order.packager ? {
+        id: order.packager.id,
+        name: order.packager.name,
+      } : null,
       cantidadEstimada: order.cantidadEstimada,
       precioEstimadoCompra: order.precioEstimadoCompra,
       fechaCreacion: order.fechaCreacion,
-      estado: order.estado
+      estado: order.estado,
+      logistica: {
+        fechaFinalizacion: order.logistica?.fechaFinalizacion ?? null,
+      },
     }));
   }
 
@@ -295,7 +435,7 @@ export class ReceptionService {
     const response: ReceptionResponse = {
       id: reception.id,
       orderId: reception.orderId,
-      fechaLlegada: reception.fechaLlegada,
+      fechaLlegada: this.formatToUTCDateString(reception.fechaLlegada),
       horaLlegada: reception.horaLlegada,
       pesoRecibido: reception.pesoRecibido,
       calidadValidada: reception.calidadValidada,
@@ -320,6 +460,7 @@ export class ReceptionService {
         } : { name: '', location: '' },
         cantidadEstimada: reception.order.cantidadEstimada,
         precioEstimadoCompra: reception.order.precioEstimadoCompra,
+        precioEstimadoVenta: reception.order.precioEstimadoVenta,
         fechaCreacion: reception.order.fechaCreacion
       };
     }

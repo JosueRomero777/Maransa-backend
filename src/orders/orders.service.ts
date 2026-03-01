@@ -1,17 +1,19 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PriceEstimationsService } from '../price-estimations/price-estimations.service';
+import { AIService } from '../ai/ai.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrderFilterDto } from './dto/order-filter.dto';
-import { Order, Prisma, EstadoPedido } from '@prisma/client';
+import { Order, Prisma, EstadoPedido, EstadoCosecha } from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private prisma: PrismaService,
-    private priceEstimationsService: PriceEstimationsService
-  ) {}
+    private priceEstimationsService: PriceEstimationsService,
+    private aiService: AIService,
+  ) { }
 
   /**
    * Genera un código único para el pedido
@@ -19,7 +21,7 @@ export class OrdersService {
   private async generateOrderCode(): Promise<string> {
     const currentYear = new Date().getFullYear();
     const prefix = `ORD-${currentYear}`;
-    
+
     // Buscar el último número del año actual
     const lastOrder = await this.prisma.order.findFirst({
       where: {
@@ -86,11 +88,11 @@ export class OrdersService {
       codigo,
       cantidadEstimada: createOrderDto.cantidadEstimada,
       cantidadPedida: createOrderDto.cantidadEstimada, // Inicialmente igual a la estimada
-      fechaTentativaCosecha: createOrderDto.fechaTentativaCosecha 
-        ? new Date(createOrderDto.fechaTentativaCosecha) 
+      fechaTentativaCosecha: createOrderDto.fechaTentativaCosecha
+        ? new Date(createOrderDto.fechaTentativaCosecha)
         : undefined,
       precioEstimadoCompra: createOrderDto.precioEstimadoCompra,
-      precioEstimadoVenta: createOrderDto.precioEstimadoVenta,
+      // precioEstimadoVenta: createOrderDto.precioEstimadoVenta, // Se elimina, se actualizará luego
       condicionesIniciales: createOrderDto.condicionesIniciales,
       observaciones: createOrderDto.observaciones,
       provider: {
@@ -132,67 +134,27 @@ export class OrdersService {
       },
     });
 
-    // Generar estimación automática de precios si no se proporcionaron
-    if (!createOrderDto.precioEstimadoCompra || !createOrderDto.precioEstimadoVenta) {
-      try {
-        const estimacion = await this.priceEstimationsService.createEstimation({
-          orderId: order.id,
-          providerId: order.providerId,
-          packagerId: order.packagerId || undefined,
-          cantidad: order.cantidadEstimada,
-          temporada: this.getCurrentSeason(),
-        });
+    // Iniciar estimación automática de precios de forma asíncrona EN SEGUNDO PLANO
+    // No usamos await para no bloquear la respuesta al usuario
+    this.processAIPredictionAsync(
+      order.id,
+      order.providerId,
+      order.packagerId || undefined,
+      order.cantidadEstimada,
+      createdById,
+      createOrderDto.presentationTypeId,
+      createOrderDto.shrimpSizeId
+    ).catch(err => {
+      console.error(`Error en el proceso asíncrono de predicción IA para la orden ${order.id}:`, err);
+    });
 
-        // Actualizar el pedido con los precios estimados
-        const updatedOrder = await this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            precioEstimadoCompra: estimacion.precioEstimadoCompra || order.precioEstimadoCompra,
-            precioEstimadoVenta: estimacion.precioEstimadoVenta || order.precioEstimadoVenta,
-          },
-          include: {
-            provider: true,
-            packager: true,
-            createdBy: {
-              select: { id: true, name: true, email: true },
-            },
-            estimaciones: {
-              orderBy: { createdAt: 'desc' },
-              take: 1,
-            },
-          },
-        });
-
-        // Registrar evento de creación
-        await this.prisma.eventLog.create({
-          data: {
-            orderId: order.id,
-            userId: createdById,
-            accion: 'pedido_creado',
-            descripcion: `Pedido ${order.codigo} creado con estimación automática de precios`,
-            datosNuevos: {
-              cantidadEstimada: order.cantidadEstimada,
-              proveedor: provider.name,
-              precioEstimadoCompra: updatedOrder.precioEstimadoCompra,
-              precioEstimadoVenta: updatedOrder.precioEstimadoVenta,
-            },
-          },
-        });
-
-        return updatedOrder;
-      } catch (estimationError) {
-        console.error('Error generando estimación automática:', estimationError);
-        // Continuar con el pedido sin estimación automática
-      }
-    }
-
-    // Registrar evento de creación
+    // Registrar evento de creación inicial (el precio de venta se actualizará luego)
     await this.prisma.eventLog.create({
       data: {
         orderId: order.id,
         userId: createdById,
         accion: 'pedido_creado',
-        descripcion: `Pedido ${order.codigo} creado`,
+        descripcion: `Pedido ${order.codigo} creado (predicción IA iniciada en segundo plano)`,
         datosNuevos: {
           cantidadEstimada: order.cantidadEstimada,
           proveedor: provider.name,
@@ -203,6 +165,156 @@ export class OrdersService {
     });
 
     return order;
+  }
+
+  /**
+   * Proceso asíncrono en segundo plano para obtener o generar la predicción de IA
+   */
+  private async processAIPredictionAsync(
+    orderId: number,
+    providerId: number,
+    packagerId: number | undefined,
+    cantidadEstimada: number,
+    userId: number,
+    presentationTypeId?: number,
+    shrimpSizeId?: number
+  ) {
+    try {
+      console.log(`[IA Async] Iniciando predicción para orden ${orderId}...`);
+
+      let paramsParaIA = {
+        tipoProducto: 'U15', // valor por defecto
+        presentacion: 'HEADLESS' // valor por defecto
+      };
+
+      // Obtener detalles de talla y presentación para mejor predicción
+      if (shrimpSizeId) {
+        const size = await this.prisma.shrimpSize.findUnique({ where: { id: shrimpSizeId } });
+        if (size) paramsParaIA.tipoProducto = size.code;
+      }
+
+      if (presentationTypeId) {
+        const pres = await this.prisma.presentationType.findUnique({ where: { id: presentationTypeId } });
+        if (pres) {
+          const presCodeUpper = pres.code.toUpperCase();
+          if (presCodeUpper === 'HL' || presCodeUpper === 'HEADLESS') {
+            paramsParaIA.presentacion = 'HEADLESS';
+          } else if (presCodeUpper === 'ENTERO' || presCodeUpper === 'HOSO' || presCodeUpper === 'WHOLE') {
+            paramsParaIA.presentacion = 'WHOLE';
+          } else {
+            paramsParaIA.presentacion = pres.code;
+          }
+        }
+      }
+
+      // 1. Obtener la fecha actual normalizada a medianoche UTC (como se guarda en PrediccionesIA)
+      const targetDate = new Date();
+      // Zona horaria de Ecuador es UTC-5. Usaremos la fecha actual del sistema.
+      const targetDateMidnight = new Date(Date.UTC(
+        targetDate.getUTCFullYear(),
+        targetDate.getUTCMonth(),
+        targetDate.getUTCDate()
+      ));
+
+      // 2. Buscar si ya existe una predicción en la base de datos (con la misma talla, presentación y fecha)
+      let priceVenta: number | null = null;
+      let usedExisting = false;
+
+      // Importante: El ai.service mapPresentationToName convierte 'HEADLESS' a 'Sin Cabeza'
+      const mappedPresentation = this.mapPresentationToNameLocal(paramsParaIA.presentacion);
+
+      const existingPrediction = await this.prisma.prediccionesIA.findFirst({
+        where: {
+          tipoProducto: mappedPresentation,
+          calibre: paramsParaIA.tipoProducto,
+          fechaPrediccion: {
+            gte: targetDateMidnight,
+            lt: new Date(targetDateMidnight.getTime() + 24 * 60 * 60 * 1000)
+          }
+        },
+        orderBy: { fechaCreacion: 'desc' }
+      });
+
+      if (existingPrediction) {
+        console.log(`[IA Async] Reutilizando predicción existente ID: ${existingPrediction.id} para orden ${orderId}`);
+        priceVenta = existingPrediction.precioPredicho;
+        usedExisting = true;
+      } else {
+        console.log(`[IA Async] No existe predicción. Consultando microservicio para orden ${orderId}...`);
+
+        // 3. Consultar microservicio porque no existe
+        const diasAhead = Math.max(1, Math.ceil((targetDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+        const prediccionResult = await this.aiService.predictDespachoPrice({
+          calibre: paramsParaIA.tipoProducto,
+          presentacion: paramsParaIA.presentacion,
+          dias: diasAhead,
+        });
+
+        // 4. Guardar predicción en la base de datos para futuros pedidos de hoy
+        // Simulamos un predictionResponse compatible
+        await this.prisma.prediccionesIA.create({
+          data: {
+            modeloId: 1, // Fallback
+            fechaPrediccion: targetDateMidnight,
+            tipoProducto: mappedPresentation,
+            calibre: paramsParaIA.tipoProducto,
+            precioPredicho: prediccionResult.precio_despacho_predicho_usd_lb,
+            intervaloConfianza: {
+              min: prediccionResult.intervalo_confianza_despacho.minimo,
+              max: prediccionResult.intervalo_confianza_despacho.maximo,
+              confianza: prediccionResult.confianza_porcentaje / 100
+            },
+            factoresInfluyentes: prediccionResult.correlacion || {}
+          }
+        });
+
+        priceVenta = prediccionResult.precio_despacho_predicho_usd_lb;
+      }
+
+      // 5. Actualizar la orden con el precio estimado de venta
+      if (priceVenta !== null) {
+        await this.prisma.order.update({
+          where: { id: orderId },
+          data: {
+            precioEstimadoVenta: priceVenta
+          }
+        });
+
+        const origenData = usedExisting ? 'caché BD local' : 'microservicio IA';
+        console.log(`[IA Async] Orden ${orderId} actualizada exitosamente con precio estimado venta: ${priceVenta} (Origen: ${origenData})`);
+
+        // Registrar evento de actualización
+        await this.prisma.eventLog.create({
+          data: {
+            orderId: orderId,
+            userId: userId,
+            accion: 'prediccion_ia_completada',
+            descripcion: `Precio estimado de venta actualizado a ${priceVenta} vía IA en segundo plano`,
+            datosNuevos: {
+              precioEstimadoVenta: priceVenta,
+              origenPrediccion: origenData
+            }
+          }
+        });
+      }
+
+    } catch (error) {
+      console.error(`[IA Async] Error procesando predicción para la orden ${orderId}:`, error);
+      // Falla silenciosa para el usuario
+    }
+  }
+
+  private mapPresentationToNameLocal(presentation: string | undefined): string {
+    switch (presentation?.toUpperCase()) {
+      case 'HEADLESS':
+        return 'Sin Cabeza';
+      case 'WHOLE':
+        return 'Entero con Cabeza';
+      case 'LIVE':
+        return 'Vivo';
+      default:
+        return presentation || 'Camarón';
+    }
   }
 
   /**
@@ -225,7 +337,7 @@ export class OrdersService {
    */
   async generatePriceEstimation(orderId: number) {
     const order = await this.findOne(orderId);
-    
+
     if (!order) {
       throw new NotFoundException('Pedido no encontrado');
     }
@@ -409,7 +521,16 @@ export class OrdersService {
   async update(id: number, updateOrderDto: UpdateOrderDto, userId: number): Promise<Order> {
     const existingOrder = await this.findOne(id);
 
+    const approvedHarvest = await this.prisma.harvest.findUnique({
+      where: { orderId: id },
+      select: { estado: true },
+    });
+
     // Validaciones según el estado actual
+    if (existingOrder.estado === EstadoPedido.COSECHA_APROBADA || approvedHarvest?.estado === EstadoCosecha.APROBADO) {
+      throw new BadRequestException('No se puede modificar un pedido con cosecha aprobada');
+    }
+
     if (existingOrder.estado === EstadoPedido.FINALIZADO) {
       throw new BadRequestException('No se puede modificar un pedido finalizado');
     }
@@ -420,12 +541,16 @@ export class OrdersService {
 
     const updateData = {
       ...updateOrderDto,
-      fechaTentativaCosecha: updateOrderDto.fechaTentativaCosecha 
-        ? new Date(updateOrderDto.fechaTentativaCosecha)
-        : undefined,
-      fechaDefinitivaCosecha: updateOrderDto.fechaDefinitivaCosecha 
-        ? new Date(updateOrderDto.fechaDefinitivaCosecha)
-        : undefined,
+      fechaTentativaCosecha: updateOrderDto.fechaTentativaCosecha === undefined
+        ? undefined
+        : updateOrderDto.fechaTentativaCosecha
+          ? new Date(updateOrderDto.fechaTentativaCosecha)
+          : null,
+      fechaDefinitivaCosecha: updateOrderDto.fechaDefinitivaCosecha === undefined
+        ? undefined
+        : updateOrderDto.fechaDefinitivaCosecha
+          ? new Date(updateOrderDto.fechaDefinitivaCosecha)
+          : null,
     };
 
     const updatedOrder = await this.prisma.order.update({
@@ -491,7 +616,7 @@ export class OrdersService {
 
     // Validaciones de transición de estados
     const validTransitions = this.getValidTransitions(order.estado);
-    
+
     if (!validTransitions.includes(newStatus)) {
       throw new BadRequestException(
         `No es posible cambiar de ${order.estado} a ${newStatus}`
@@ -614,18 +739,18 @@ export class OrdersService {
     });
 
     const dates = new Set<string>();
-    
+
     orders.forEach(order => {
       // Agregar fecha de creación
       if (order.fechaCreacion) {
         dates.add(order.fechaCreacion.toISOString().split('T')[0]);
       }
-      
+
       // Agregar fecha tentativa de cosecha
       if (order.fechaTentativaCosecha) {
         dates.add(order.fechaTentativaCosecha.toISOString().split('T')[0]);
       }
-      
+
       // Agregar fecha definitiva de cosecha
       if (order.fechaDefinitivaCosecha) {
         dates.add(order.fechaDefinitivaCosecha.toISOString().split('T')[0]);

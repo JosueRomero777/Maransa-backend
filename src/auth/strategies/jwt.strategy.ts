@@ -8,9 +8,16 @@ import { User } from '@prisma/client';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private authService: AuthService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (req: any) => {
+          // Robust check for query token in Express/NestJS
+          const token = req?.query?.token || req?.query?.['token'];
+          return token ? (token as string) : null;
+        },
+      ]),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'your-secret-key', // En producción usar variable de entorno
+      secretOrKey: process.env.JWT_SECRET || 'your-secret-key',
     });
   }
 

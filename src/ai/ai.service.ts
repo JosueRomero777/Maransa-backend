@@ -107,9 +107,9 @@ export class AIService {
       );
 
       const data = response.data;
-      
+
       this.logger.log(`Respuesta del microservicio: ${JSON.stringify(data)}`);
-      
+
       return {
         precioPredicho: data.precio_predicho,
         intervaloConfianza: data.intervalo_confianza,
@@ -123,7 +123,7 @@ export class AIService {
     } catch (error) {
       this.logger.error(`Error en predicción de precio: ${error.message}`);
       this.logger.error(`Stack trace: ${error.stack}`);
-      
+
       if (error.response?.status === 500) {
         this.logger.error(`Respuesta del servidor: ${JSON.stringify(error.response.data)}`);
         throw new HttpException(
@@ -131,7 +131,7 @@ export class AIService {
           HttpStatus.INTERNAL_SERVER_ERROR
         );
       }
-      
+
       throw new HttpException(
         'No se pudo obtener predicción de precio',
         HttpStatus.SERVICE_UNAVAILABLE
@@ -141,7 +141,8 @@ export class AIService {
 
   /**
    * Predice el precio de despacho usando el microservicio Python
-   * Flujo: market-prices -> correlations/calculate -> predict/despacho-price
+   * Llama directamente a /predict/despacho-price que internamente
+   * calcula correlaciones y aplica regresión lineal + EMA
    */
   async predictDespachoPrice(params: {
     calibre: string;
@@ -153,51 +154,12 @@ export class AIService {
 
       this.logger.log(`Predicción despacho: calibre=${calibre}, presentacion=${presentacion}, dias=${dias}`);
 
-      // Step 1: Obtener precios de mercado
-      this.logger.log('Step 1: Obteniendo precios de mercado...');
-      try {
-        const marketPricesResponse = await firstValueFrom(
-          this.httpService.get(`${this.aiServiceUrl}/data/market-prices`, {
-            params: { force_refresh: true },
-            timeout: 30000,
-          })
-        );
-        this.logger.log('✓ Precios de mercado obtenidos');
-      } catch (marketErr) {
-        this.logger.error(`✗ Error obteniendo precios de mercado: ${marketErr.message}`);
-        throw new HttpException(
-          `Error obteniendo precios de mercado: ${marketErr.message}`,
-          HttpStatus.SERVICE_UNAVAILABLE
-        );
-      }
-
-      // Step 2: Calcular correlaciones
-      this.logger.log('Step 2: Calculando correlaciones...');
-      try {
-        const correlationResponse = await firstValueFrom(
-          this.httpService.post(`${this.aiServiceUrl}/correlations/calculate`, null, {
-            params: { calibre, presentacion },
-            timeout: 30000,
-          })
-        );
-        this.logger.log('✓ Correlaciones calculadas');
-      } catch (corrErr) {
-        const status = (corrErr as any)?.response?.status || HttpStatus.SERVICE_UNAVAILABLE;
-        const detail = (corrErr as any)?.response?.data?.detail || (corrErr as any)?.message;
-
-        if (status === HttpStatus.NOT_FOUND) {
-          this.logger.warn(`⚠️ Correlación no disponible: ${detail}. Continuando con predicción...`);
-        } else {
-          this.logger.error(`✗ Error calculando correlaciones: ${detail}`);
-          throw new HttpException(
-            `Error calculando correlaciones: ${detail}`,
-            status
-          );
-        }
-      }
-
-      // Step 3: Obtener predicción
-      this.logger.log('Step 3: Obteniendo predicción de despacho...');
+      // Obtener predicción directamente del microservicio Python
+      // El endpoint /predict/despacho-price ya maneja internamente:
+      //   1. Consulta historial público de la BD
+      //   2. Calcula correlación público→despacho
+      //   3. Aplica regresión lineal + EMA
+      this.logger.log('Obteniendo predicción de despacho...');
       try {
         const predictionResponse = await firstValueFrom(
           this.httpService.get(`${this.aiServiceUrl}/predict/despacho-price`, {
@@ -242,7 +204,7 @@ export class AIService {
 
     } catch (error) {
       this.logger.error(`Error obteniendo factores de mercado: ${error.message}`);
-      
+
       // Retornar datos básicos como fallback
       return {
         factors: [
@@ -274,7 +236,7 @@ export class AIService {
 
     } catch (error) {
       this.logger.error(`Error en análisis de sentimiento: ${error.message}`);
-      
+
       // Retornar análisis neutral como fallback
       return {
         sentimiento: 0.0,
@@ -346,7 +308,7 @@ export class AIService {
   }> {
     try {
       const fechaPrediccion = orderData.fechaEntrega || new Date();
-      
+
       // Determinar mejor mercado basado en cantidad
       let mercadoRecomendado = 'NACIONAL';
       if (orderData.cantidadLibras > 10000) {
@@ -366,7 +328,7 @@ export class AIService {
       // Calcular riesgo de mercado basado en intervalo de confianza
       const rangoRiesgo = prediccion.intervaloConfianza.max - prediccion.intervaloConfianza.min;
       const riesgoRelativo = rangoRiesgo / prediccion.precioPredicho;
-      
+
       let riesgoMercado: 'BAJO' | 'MEDIO' | 'ALTO';
       if (riesgoRelativo < 0.1) riesgoMercado = 'BAJO';
       else if (riesgoRelativo < 0.2) riesgoMercado = 'MEDIO';
@@ -376,7 +338,7 @@ export class AIService {
       const factorClimatico = prediccion.factoresPrincipales.clima || 1;
       const factorEstacional = prediccion.factoresPrincipales.estacionalidad || 1;
       const factorConfianza = prediccion.confianzaModelo;
-      
+
       const oportunidadCompra = Math.round(
         (factorClimatico * factorEstacional * factorConfianza * 100)
       );
@@ -413,14 +375,14 @@ export class AIService {
   ) {
     try {
       this.logger.log('Intentando guardar predicción en la base de datos...');
-      
+
       // Asegurar que existe un modelo ML (crear uno por defecto si no existe)
       let modeloId = 1;
       try {
         const modelo = await this.prisma.modelosML.findFirst({
           where: { activo: true },
         });
-        
+
         if (!modelo) {
           this.logger.log('No existe modelo ML activo, creando uno por defecto...');
           const nuevoModelo = await this.prisma.modelosML.create({
@@ -545,13 +507,13 @@ export class AIService {
       const predictionsWithDias = predictions.map(p => {
         const now = new Date(p.fechaCreacion);
         const target = new Date(p.fechaPrediccion);
-        
+
         // Normalizar a medianoche UTC para cálculo de días
         const nowMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
         const targetMidnight = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()));
-        
+
         const diasPrediccion = Math.floor((targetMidnight.getTime() - nowMidnight.getTime()) / (1000 * 60 * 60 * 24));
-        
+
         return {
           ...p,
           diasPrediccion,
@@ -589,11 +551,11 @@ export class AIService {
       // Calcular días
       const now = new Date(prediction.fechaCreacion);
       const target = new Date(prediction.fechaPrediccion);
-      
+
       // Normalizar a medianoche UTC para cálculo de días
       const nowMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       const targetMidnight = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()));
-      
+
       const diasPrediccion = Math.floor((targetMidnight.getTime() - nowMidnight.getTime()) / (1000 * 60 * 60 * 24));
 
       return {
@@ -665,7 +627,7 @@ export class AIService {
         }
 
         const shrimpSizeCode = reception.order.shrimpSize.code; // ej: "16/20"
-        
+
         // Extraer la fecha en ISO format y convertir a medianoche UTC
         const receptionDate = new Date(reception.fechaLlegada);
         const receptionDateOnly = new Date(Date.UTC(
@@ -720,7 +682,7 @@ export class AIService {
               percentageDifference: parseFloat(
                 ((Math.abs(realPricePerLb - p.precioPredicho) / realPricePerLb) * 100).toFixed(2)
               ),
-              accuracy: realPricePerLb > 0 
+              accuracy: realPricePerLb > 0
                 ? parseFloat((100 - (Math.abs(realPricePerLb - p.precioPredicho) / realPricePerLb) * 100).toFixed(2))
                 : 0
             }))
@@ -734,7 +696,7 @@ export class AIService {
       const summaryByCalibres = Array.from(new Set(comparisons.map(c => c.calibre))).map((cal) => {
         const calibreComparisons = comparisons.filter(c => c.calibre === cal);
         const allPredictions = calibreComparisons.flatMap(c => c.predictions);
-        
+
         const avgRealPrice = calibreComparisons.reduce((sum, c) => sum + c.realPrice, 0) / calibreComparisons.length;
         const avgPredictedPrice = allPredictions.length > 0
           ? allPredictions.reduce((sum, p) => sum + p.predictedPrice, 0) / allPredictions.length
@@ -751,7 +713,7 @@ export class AIService {
           averageRealPrice: parseFloat(avgRealPrice.toFixed(4)),
           averagePredictedPrice: parseFloat(avgPredictedPrice.toFixed(4)),
           difference: parseFloat(Math.abs(avgRealPrice - avgPredictedPrice).toFixed(4)),
-          percentageDifference: avgRealPrice > 0 
+          percentageDifference: avgRealPrice > 0
             ? parseFloat(((Math.abs(avgRealPrice - avgPredictedPrice) / avgRealPrice) * 100).toFixed(2))
             : 0,
           averageAccuracy: parseFloat(avgAccuracy.toFixed(2))
@@ -869,7 +831,7 @@ export class AIService {
         }
 
         const shrimpSizeCode = reception.order.shrimpSize.code;
-        
+
         // Normalizar fecha de recepción a medianoche UTC
         const receptionDate = new Date(reception.fechaLlegada);
         const receptionDateOnly = new Date(Date.UTC(

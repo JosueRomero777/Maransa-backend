@@ -90,6 +90,12 @@ export class InvoicingController {
     return this.invoicingService.signAndAuthorizeInvoice(id);
   }
 
+  @Post('invoices/:id/check-authorization')
+  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA, RolUsuario.FACTURACION)
+  checkAuthorizationStatus(@Param('id', ParseIntPipe) id: number) {
+    return this.invoicingService.checkInvoiceAuthorizationStatus(id);
+  }
+
   @Post('invoices/:id/cancel')
   @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA)
   cancelInvoice(

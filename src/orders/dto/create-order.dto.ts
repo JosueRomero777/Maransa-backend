@@ -29,9 +29,9 @@ export class CreateOrderDto {
   @IsNumber()
   precioEstimadoCompra?: number;
 
-  @IsOptional()
-  @IsNumber()
-  precioEstimadoVenta?: number;
+  // @IsOptional()
+  // @IsNumber()
+  // precioEstimadoVenta?: number; // Eliminado, se calcula automáticamente
 
   @IsOptional()
   @IsString()

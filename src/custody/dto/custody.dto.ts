@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, IsEnum, IsArray, IsDate, ValidateNested } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsEnum, IsArray, IsDate, ValidateNested, Matches, IsNotEmpty } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { EstadoCustodia } from '@prisma/client';
 
@@ -18,6 +18,10 @@ export class CreateCustodyDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Matches(/^\d{10}$/, {
+    each: true,
+    message: 'Cada miembro del personal debe tener una cédula de 10 dígitos'
+  })
   personalAsignado?: string[];
 
   @IsOptional()
@@ -37,6 +41,10 @@ export class UpdateCustodyDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Matches(/^\d{10}$/, {
+    each: true,
+    message: 'Cada miembro del personal debe tener una cédula de 10 dígitos'
+  })
   personalAsignado?: string[];
 
   @IsOptional()
@@ -88,7 +96,12 @@ export class CustodyFilterDto {
 
 export class AssignPersonnelDto {
   @IsArray()
+  @IsNotEmpty({ each: true })
   @IsString({ each: true })
+  @Matches(/^\d{10}$/, {
+    each: true,
+    message: 'Cada miembro del personal debe tener una cédula de 10 dígitos'
+  })
   personalAsignado: string[];
 
   @IsString()

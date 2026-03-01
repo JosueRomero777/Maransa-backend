@@ -1,45 +1,47 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
   UseGuards,
   Request,
   ParseIntPipe,
   UseInterceptors,
   UploadedFiles,
   Res,
-  BadRequestException
+  BadRequestException,
+  SetMetadata
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LaboratoryService } from './laboratory.service';
-import { 
-  CreateLaboratoryDto, 
-  UpdateLaboratoryDto, 
+import {
+  CreateLaboratoryDto,
+  UpdateLaboratoryDto,
   LaboratoryFilterDto,
-  ReevaluationDto 
+  ReevaluationDto
 } from './dto/laboratory.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { RolUsuario } from '@prisma/client';
 
 @Controller('laboratory')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LaboratoryController {
-  constructor(private readonly laboratoryService: LaboratoryService) {}
+  constructor(private readonly laboratoryService: LaboratoryService) { }
 
   @Post()
   @Roles(RolUsuario.ADMIN, RolUsuario.LABORATORIO)
   create(
-    @Body() createLaboratoryDto: CreateLaboratoryDto, 
+    @Body() createLaboratoryDto: CreateLaboratoryDto,
     @Request() req
   ) {
     return this.laboratoryService.create(createLaboratoryDto, req.user.id, []);
@@ -90,7 +92,7 @@ export class LaboratoryController {
   @Patch(':id')
   @Roles(RolUsuario.ADMIN, RolUsuario.LABORATORIO)
   update(
-    @Param('id', ParseIntPipe) id: number, 
+    @Param('id', ParseIntPipe) id: number,
     @Body() updateLaboratoryDto: UpdateLaboratoryDto,
     @Request() req
   ) {
@@ -113,7 +115,7 @@ export class LaboratoryController {
   @Roles(RolUsuario.ADMIN, RolUsuario.LABORATORIO)
   @UseInterceptors(FilesInterceptor('files', 10))
   requestReevaluation(
-    @Param('id', ParseIntPipe) id: number, 
+    @Param('id', ParseIntPipe) id: number,
     @Body() reevaluationDto: ReevaluationDto,
     @UploadedFiles() files: Array<Express.Multer.File>
   ) {
@@ -121,15 +123,14 @@ export class LaboratoryController {
   }
 
   @Get(':id/files/:filename')
-  @Roles(RolUsuario.ADMIN, RolUsuario.LABORATORIO, RolUsuario.GERENCIA)
-  downloadFile(
+  @Public()
+  async downloadFile(
     @Param('id', ParseIntPipe) id: number,
     @Param('filename') filename: string,
     @Res() res: Response
   ) {
     try {
-      // Get the laboratory to find its orderId
-      return this.laboratoryService.downloadFile(id, filename, res);
+      await this.laboratoryService.downloadFile(id, filename, res);
     } catch (error) {
       throw new BadRequestException('Error descargando archivo');
     }

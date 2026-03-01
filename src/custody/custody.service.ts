@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { 
-  CreateCustodyDto, 
-  UpdateCustodyDto, 
+import {
+  CreateCustodyDto,
+  UpdateCustodyDto,
   CustodyFilterDto,
   AssignPersonnelDto,
   AddIncidentDto
 } from './dto/custody.dto';
 import { EstadoCustodia, EstadoPedido, EstadoLogistica } from '@prisma/client';
+import { CustodyTrackingSessionService } from '../custody-tracking/custody-tracking-session.service';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -15,14 +16,17 @@ import * as fs from 'fs';
 export class CustodyService {
   private readonly logger = new Logger(CustodyService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private custodyTrackingSessionService: CustodyTrackingSessionService
+  ) { }
 
   async create(createCustodyDto: CreateCustodyDto, assignedUserId: number, files?: Array<Express.Multer.File>) {
     try {
       // Verificar que el pedido existe y tiene logística asignada
       const order = await this.prisma.order.findUnique({
         where: { id: createCustodyDto.orderId },
-        include: { 
+        include: {
           custodia: true,
           logistica: true,
           provider: true
@@ -475,6 +479,9 @@ export class CustodyService {
       // Registrar evento
       await this.logEvent(custody.orderId, custody.assignedUserId, 'custodia_completada', 'Custodia completada', updateData);
 
+      // Limpiar sesión de tracking si existe
+      await this.custodyTrackingSessionService.forceEndSession(id);
+
       return this.formatCustodyResponse(updatedCustody);
     } catch (error) {
       this.logger.error('Error completing custody:', error);
@@ -724,6 +731,9 @@ export class CustodyService {
 
   async remove(id: number) {
     try {
+      // Limpiar sesión de tracking si existe antes de eliminar
+      await this.custodyTrackingSessionService.forceEndSession(id);
+
       await this.prisma.custody.delete({
         where: { id }
       });
@@ -737,24 +747,24 @@ export class CustodyService {
 
   private async saveFiles(files: Array<Express.Multer.File>, orderId: number, tipo: string): Promise<string[]> {
     const savedFiles: string[] = [];
-    
+
     for (const file of files) {
       try {
         const uploadDir = path.join('uploads', 'custody', orderId.toString(), tipo);
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
-        
+
         const filename = `${Date.now()}-${file.originalname}`;
         const filepath = path.join(uploadDir, filename);
-        
+
         fs.writeFileSync(filepath, file.buffer);
         savedFiles.push(filepath);
       } catch (error) {
         this.logger.error('Error saving file:', error);
       }
     }
-    
+
     return savedFiles;
   }
 

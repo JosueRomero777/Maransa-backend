@@ -14,6 +14,7 @@ import * as fs from 'fs/promises';
 @Injectable()
 export class InvoicingService {
   private readonly logger = new Logger(InvoicingService.name);
+  private static readonly AUTO_RECEPTION_TAG = '[AUTO_RECEPCION]';
 
   constructor(
     private prisma: PrismaService,
@@ -23,6 +24,128 @@ export class InvoicingService {
   ) { }
 
   // ===== FACTURAS =====
+
+  private getTipoIdentificacionComprador(identificacion?: string): string {
+    const cleaned = (identificacion || '').replace(/\D/g, '');
+    if (cleaned.length === 13) return '04';
+    if (cleaned.length === 10) return '05';
+    if (cleaned.length > 0) return '06';
+    return '07';
+  }
+
+  async createInvoiceFromReception(orderId: number) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        recepcion: true,
+        packager: true,
+        presentationType: true,
+        shrimpSize: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Pedido con ID ${orderId} no encontrado`);
+    }
+
+    if (!order.recepcion) {
+      throw new BadRequestException('No se puede crear factura automática sin recepción asociada');
+    }
+
+    if (!order.recepcion.loteAceptado) {
+      return {
+        created: false,
+        reason: 'Lote no aceptado; no se genera factura automática',
+      };
+    }
+
+    if (!order.packagerId || !order.packager) {
+      throw new BadRequestException('La orden no tiene empacadora asignada para crear factura automática');
+    }
+
+    const existingInvoice = await this.prisma.invoice.findFirst({
+      where: {
+        orderId,
+        estado: { not: EstadoFactura.ANULADA },
+      },
+      include: {
+        packager: true,
+        order: true,
+        detalles: true,
+      },
+    });
+
+    if (existingInvoice) {
+      return {
+        created: false,
+        reason: `Ya existe una factura activa para la orden (${existingInvoice.numeroFactura})`,
+        invoice: existingInvoice,
+      };
+    }
+
+    const cantidad =
+      order.recepcion.pesoRecibido ??
+      order.cantidadFinal ??
+      order.cantidadEstimada;
+
+    const precioUnitario =
+      order.recepcion.precioFinalVenta ??
+      order.precioRealVenta ??
+      order.precioEstimadoVenta ??
+      0;
+
+    if (!cantidad || cantidad <= 0) {
+      throw new BadRequestException('No se puede crear factura automática: cantidad inválida en recepción/orden');
+    }
+
+    if (!precioUnitario || precioUnitario <= 0) {
+      throw new BadRequestException('No se puede crear factura automática: precio final/estimado de venta inválido');
+    }
+
+    const presentacion = order.presentationType?.name || 'Camarón';
+    const talla = order.shrimpSize?.displayLabel || order.shrimpSize?.code || 'Varios';
+    const descripcion = `${presentacion} ${talla} - Orden ${order.codigo}`;
+
+    const normalizedReceptionNotes = (order.recepcion.observaciones || '').trim();
+    const autoObservation = normalizedReceptionNotes
+      ? `${InvoicingService.AUTO_RECEPTION_TAG} ${normalizedReceptionNotes}`
+      : InvoicingService.AUTO_RECEPTION_TAG;
+
+    const payload: CreateInvoiceDto = {
+      packagerId: order.packagerId,
+      orderId: order.id,
+      formaPago: '01',
+      observaciones: autoObservation,
+      tipoIdentificacionComprador: this.getTipoIdentificacionComprador(order.packager.ruc ?? undefined),
+      identificacionComprador: order.packager.ruc || undefined,
+      razonSocialComprador: order.packager.name || undefined,
+      direccionComprador: order.packager.location || undefined,
+      emailComprador: order.packager.contact_email || undefined,
+      detalles: [
+        {
+          codigoPrincipal: order.codigo,
+          codigoAuxiliar: order.id.toString(),
+          descripcion,
+          cantidad,
+          unidadMedida: '3',
+          precioUnitario,
+          descuento: 0,
+          codigoImpuesto: '2',
+          codigoPorcentaje: '0',
+          tarifa: 0,
+        },
+      ],
+    };
+
+    const invoice = await this.createInvoice(payload);
+
+    this.logger.log(`🧾 Factura automática creada para orden ${order.codigo}: ${invoice.numeroFactura}`);
+
+    return {
+      created: true,
+      invoice,
+    };
+  }
 
   async createInvoice(createInvoiceDto: CreateInvoiceDto) {
     // Verificar que la empacadora existe
@@ -42,6 +165,18 @@ export class InvoicingService {
 
       if (!order) {
         throw new NotFoundException(`Pedido con ID ${createInvoiceDto.orderId} no encontrado`);
+      }
+
+      // Verificar si ya existe una factura para este pedido
+      const existingInvoice = await this.prisma.invoice.findFirst({
+        where: {
+          orderId: createInvoiceDto.orderId,
+          estado: { not: EstadoFactura.ANULADA } // Omitir anuladas si se desea permitir re-facturar
+        },
+      });
+
+      if (existingInvoice) {
+        throw new BadRequestException(`El pedido con ID ${createInvoiceDto.orderId} ya tiene una factura vinculada (${existingInvoice.numeroFactura})`);
       }
     }
 
@@ -165,7 +300,15 @@ export class InvoicingService {
       where: { id },
       include: {
         packager: true,
-        order: true,
+        order: {
+          include: {
+            recepcion: {
+              select: {
+                createdAt: true,
+              },
+            },
+          },
+        },
         detalles: true,
         pagos: true,
       },
@@ -175,15 +318,64 @@ export class InvoicingService {
       throw new NotFoundException(`Factura con ID ${id} no encontrada`);
     }
 
-    return invoice;
+    const hasAutoTag = (invoice.observaciones || '').includes(InvoicingService.AUTO_RECEPTION_TAG);
+    const receptionCreatedAt = invoice.order?.recepcion?.createdAt;
+    const createdDiffMs = receptionCreatedAt
+      ? Math.abs(new Date(invoice.createdAt).getTime() - new Date(receptionCreatedAt).getTime())
+      : Number.MAX_SAFE_INTEGER;
+    const createdNearReception = createdDiffMs <= 2 * 60 * 1000;
+    const esAutoRecepcion = hasAutoTag || (Boolean(invoice.orderId && receptionCreatedAt) && createdNearReception);
+
+    return {
+      ...invoice,
+      esAutoRecepcion,
+    };
   }
 
   async update(id: number, updateInvoiceDto: UpdateInvoiceDto) {
-    const invoice = await this.findOne(id);
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        packager: true,
+        order: {
+          include: {
+            recepcion: {
+              select: {
+                createdAt: true,
+              },
+            },
+          },
+        },
+        detalles: true,
+        pagos: true,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException(`Factura con ID ${id} no encontrada`);
+    }
 
     // No permitir editar facturas autorizadas o pagadas
     if (invoice.estado === EstadoFactura.AUTORIZADA_SRI || invoice.estado === EstadoFactura.PAGADA) {
       throw new BadRequestException('No se puede editar una factura autorizada o pagada');
+    }
+
+    const hasAutoTag = (invoice.observaciones || '').includes(InvoicingService.AUTO_RECEPTION_TAG);
+    const receptionCreatedAt = invoice.order?.recepcion?.createdAt;
+    const createdDiffMs = receptionCreatedAt
+      ? Math.abs(new Date(invoice.createdAt).getTime() - new Date(receptionCreatedAt).getTime())
+      : Number.MAX_SAFE_INTEGER;
+    const createdNearReception = createdDiffMs <= 2 * 60 * 1000;
+    const isAutoReceptionInvoice = hasAutoTag || (Boolean(invoice.orderId && receptionCreatedAt) && createdNearReception);
+
+    if (isAutoReceptionInvoice) {
+      const allowedFields = ['formaPago'];
+      const attemptedFields = Object.keys(updateInvoiceDto).filter((key) => (updateInvoiceDto as any)[key] !== undefined);
+      const invalidFields = attemptedFields.filter((field) => !allowedFields.includes(field));
+
+      if (invalidFields.length > 0) {
+        throw new BadRequestException('Las facturas creadas automáticamente desde recepción solo permiten editar la forma de pago');
+      }
     }
 
     return this.prisma.invoice.update({
@@ -356,7 +548,8 @@ export class InvoicingService {
         );
       } catch (error: any) {
         // Verificar si el error es "EN PROCESAMIENTO"
-        if (error.message && error.message.includes('CLAVE DE ACCESO EN PROCESAMIENTO')) {
+        const processingMessage = (error?.message || '').toUpperCase();
+        if (processingMessage.includes('CLAVE DE ACCESO EN PROCESAMIENTO') || processingMessage.includes('EN PROCESAMIENTO')) {
           this.logger.log('⏳ Comprobante aceptado por el SRI y está en procesamiento');
           this.logger.log('🔄 Consultando estado cada 3-5 segundos hasta obtener autorización...');
           isProcessing = true;
@@ -402,20 +595,24 @@ export class InvoicingService {
               this.logger.log(`⏳ Estado: ${consultaResult.estado}, esperando...`);
             }
           } catch (consultaError: any) {
-            if (retryCount === maxRetries) {
-              throw new BadRequestException(
-                `No se pudo obtener autorización después de ${maxRetries} intentos. El comprobante sigue en procesamiento. Puede consultar manualmente más tarde con la clave de acceso: ${invoice.claveAcceso}`
-              );
-            }
             this.logger.warn(`⚠️ Error en consulta (intento ${retryCount}): ${consultaError.message}`);
           }
         }
 
         if (!authorized) {
-          throw new BadRequestException(
-            `El comprobante sigue EN PROCESAMIENTO después de ${maxRetries} intentos. Consulte más tarde con la clave: ${invoice.claveAcceso}`
-          );
+          return {
+            queued: true,
+            authorized: false,
+            estado: invoice.estado,
+            claveAcceso: invoice.claveAcceso,
+            message: `El comprobante está en cola de procesamiento del SRI. Consulte nuevamente más tarde con la clave: ${invoice.claveAcceso}`,
+            invoice,
+          };
         }
+      }
+
+      if (!firmaResult) {
+        throw new BadRequestException('No se obtuvo respuesta válida del servicio de firma/autorización');
       }
 
       // Paso 3: Guardar XML firmado
@@ -496,11 +693,100 @@ export class InvoicingService {
         `✅ Factura ${invoice.numeroFactura} autorizada exitosamente. Autorización: ${firmaResult.numeroAutorizacion}`,
       );
 
-      return updatedInvoice;
+      return {
+        queued: false,
+        authorized: true,
+        estado: updatedInvoice.estado,
+        claveAcceso: updatedInvoice.claveAcceso,
+        message: 'Comprobante autorizado exitosamente por el SRI',
+        invoice: updatedInvoice,
+      };
     } catch (error: any) {
       this.logger.error(`❌ Error en firma y autorización: ${error.message}`);
       throw new BadRequestException(`Error en firma: ${error.message}`);
     }
+  }
+
+  async checkInvoiceAuthorizationStatus(id: number) {
+    const invoice = await this.findOne(id);
+
+    if (!invoice.claveAcceso) {
+      throw new BadRequestException('La factura no tiene clave de acceso para consultar autorización');
+    }
+
+    if (invoice.estado === EstadoFactura.AUTORIZADA_SRI) {
+      return {
+        queued: false,
+        authorized: true,
+        estado: invoice.estado,
+        claveAcceso: invoice.claveAcceso,
+        message: 'La factura ya se encuentra autorizada en el SRI',
+        invoice,
+      };
+    }
+
+    const config = await this.prisma.invoiceConfig.findFirst({
+      where: { activo: true },
+    });
+
+    if (!config) {
+      throw new BadRequestException('No hay configuración de facturación activa');
+    }
+
+    const consulta = await this.sriSignature.consultarAutorizacion(invoice.claveAcceso, config.urlFirmaService);
+
+    if (consulta.estado === 'AUTORIZADO' && consulta.xmlAutorizado) {
+      const xmlDir = path.join(process.cwd(), 'storage', 'invoices', 'xml');
+      await fs.mkdir(xmlDir, { recursive: true });
+      const xmlAutorizadoPath = path.join(xmlDir, `factura_${invoice.id}_autorizado_${Date.now()}.xml`);
+      await fs.writeFile(xmlAutorizadoPath, consulta.xmlAutorizado, 'utf-8');
+
+      await this.prisma.invoice.update({
+        where: { id },
+        data: {
+          estado: EstadoFactura.AUTORIZADA_SRI,
+          numeroAutorizacion: consulta.numeroAutorizacion,
+          fechaAutorizacion: consulta.fechaAutorizacion ? new Date(consulta.fechaAutorizacion) : new Date(),
+          xmlAutorizado: consulta.xmlAutorizado,
+          rutaXmlAutorizado: xmlAutorizadoPath,
+        },
+      });
+
+      await this.generatePdfForInvoice(id);
+      const updatedInvoice = await this.findOne(id);
+
+      return {
+        queued: false,
+        authorized: true,
+        estado: updatedInvoice.estado,
+        claveAcceso: updatedInvoice.claveAcceso,
+        message: 'Comprobante autorizado exitosamente por el SRI',
+        invoice: updatedInvoice,
+      };
+    }
+
+    if (consulta.estado === 'NO AUTORIZADO' || consulta.estado === 'RECHAZADO') {
+      return {
+        queued: false,
+        authorized: false,
+        estado: invoice.estado,
+        claveAcceso: invoice.claveAcceso,
+        message: 'El comprobante fue rechazado por el SRI',
+        sriEstado: consulta.estado,
+        sriMensajes: consulta.mensajes || [],
+        invoice,
+      };
+    }
+
+    return {
+      queued: true,
+      authorized: false,
+      estado: invoice.estado,
+      claveAcceso: invoice.claveAcceso,
+      message: `El comprobante está en cola de procesamiento del SRI. Consulte nuevamente más tarde con la clave: ${invoice.claveAcceso}`,
+      sriEstado: consulta.estado,
+      invoice,
+    };
   }
 
   /**

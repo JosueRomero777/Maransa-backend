@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, IsEnum, IsArray, IsDate } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsEnum, IsArray, IsDate, Matches } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { EstadoLogistica } from '@prisma/client';
 
@@ -13,10 +13,12 @@ export class CreateLogisticsDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^[A-Z]{3}-\d{3,4}$/, { message: 'El vehículo debe ser una placa válida (EJ: ABC-1234)' })
   vehiculoAsignado?: string;
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{10}$/, { message: 'El chofer debe ser un número de cédula válido (10 dígitos)' })
   choferAsignado?: string;
 
   @IsOptional()
@@ -31,9 +33,8 @@ export class CreateLogisticsDto {
   @IsString()
   ubicacionDestino?: string;
 
-  @IsOptional()
-  @IsString()
-  rutaPlanificada?: string;
+  @IsString({ message: 'La ruta planificada es obligatoria' })
+  rutaPlanificada: string;
 
   @IsOptional()
   @IsNumber()
@@ -63,10 +64,12 @@ export class CreateLogisticsDto {
 export class UpdateLogisticsDto {
   @IsOptional()
   @IsString()
+  @Matches(/^[A-Z]{3}-\d{3,4}$/, { message: 'El vehículo debe ser una placa válida (EJ: ABC-1234)' })
   vehiculoAsignado?: string;
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{10}$/, { message: 'El chofer debe ser un número de cédula válido (10 dígitos)' })
   choferAsignado?: string;
 
   @IsOptional()
@@ -146,9 +149,11 @@ export class LogisticsFilterDto {
 
 export class AssignVehicleDto {
   @IsString()
+  @Matches(/^[A-Z]{3}-\d{3,4}$/, { message: 'El vehículo debe ser una placa válida (EJ: ABC-1234)' })
   vehiculoAsignado: string;
 
   @IsString()
+  @Matches(/^\d{10}$/, { message: 'El chofer debe ser un número de cédula válido (10 dígitos)' })
   choferAsignado: string;
 
   @IsOptional()

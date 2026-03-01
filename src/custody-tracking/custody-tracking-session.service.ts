@@ -16,7 +16,7 @@ export class CustodyTrackingSessionService {
     sessionId: string;
   }>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async startSession(custodyId: number, userId: number): Promise<{
     sessionId: string;
@@ -29,10 +29,21 @@ export class CustodyTrackingSessionService {
       );
 
       if (userActiveSession) {
-        throw new HttpException(
-          'El usuario ya tiene un rastreo activo en otra custodia. Finaliza ese rastreo antes de iniciar uno nuevo.',
-          HttpStatus.CONFLICT
-        );
+        // Verificar si la custodia sigue existiendo en BD para evitar sesiones fantasma
+        const custodyExists = await this.prisma.custody.findUnique({
+          where: { id: userActiveSession.custodyId },
+          select: { id: true }
+        });
+
+        if (custodyExists) {
+          throw new HttpException(
+            'El usuario ya tiene un rastreo activo en otra custodia. Finaliza ese rastreo antes de iniciar uno nuevo.',
+            HttpStatus.CONFLICT
+          );
+        } else {
+          // Sesión fantasma: la custodia ya no existe. Limpiar.
+          this.activeSessions.delete(userActiveSession.custodyId);
+        }
       }
 
       const activeCustodyInDb = await this.prisma.custody.findFirst({
@@ -82,6 +93,16 @@ export class CustodyTrackingSessionService {
       );
 
       if (userSession) {
+        // Asegurarse de que la BD esté sincronizada
+        await this.prisma.custody.update({
+          where: { id: custodyId },
+          data: {
+            trackingActivo: true,
+            usuarioTrackingActivo: userId,
+            sessionIdTracking: userSession.sessionId
+          }
+        }).catch(() => { });
+
         return {
           sessionId: userSession.sessionId,
           success: true,
@@ -150,6 +171,29 @@ export class CustodyTrackingSessionService {
     }
   }
 
+  /**
+   * Termina una sesión de forma forzosa (sin validar sessionId)
+   * Útil para limpiezas al eliminar/completar custodias
+   */
+  async forceEndSession(custodyId: number): Promise<void> {
+    try {
+      this.activeSessions.delete(custodyId);
+
+      await this.prisma.custody.update({
+        where: { id: custodyId },
+        data: {
+          trackingActivo: false,
+          usuarioTrackingActivo: null,
+          sessionIdTracking: null
+        }
+      }).catch(() => { }); // Ignorar si ya fue eliminado de BD
+
+      this.logger.log(`✓ Sesión forzada a cerrar (si existía) para custodia: ${custodyId}`);
+    } catch (error) {
+      this.logger.error(`Error en forceEndSession custodia: ${error.message}`);
+    }
+  }
+
   hasActiveTracking(custodyId: number, userId: number): boolean {
     const session = this.activeSessions.get(custodyId);
     return session?.userId === userId && session.lastUpdateTime.getTime() > Date.now() - 5 * 60 * 1000;
@@ -186,7 +230,12 @@ export class CustodyTrackingSessionService {
             sessionIdTracking: null,
             fechaCierreTracking: new Date()
           }
-        }).catch(err => this.logger.error(`Error limpiando sesion custodia expirada: ${err.message}`));
+        }).catch(err => {
+          this.logger.error(`Error limpiando sesion custodia expirada ${custodyId}: ${err.message}`);
+          if (err.message.includes('Record to update not found')) {
+            this.logger.warn(`Custodia ${custodyId} no encontrada en BD para limpieza`);
+          }
+        });
       }
     });
   }
