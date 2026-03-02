@@ -251,7 +251,8 @@ export class XmlGeneratorService {
     }
 
     const residuo = suma % 11;
-    const digitoVerificador = residuo === 0 ? 0 : 11 - residuo;
+    const modulo11 = residuo === 0 ? 0 : 11 - residuo;
+    const digitoVerificador = modulo11 === 11 ? 0 : modulo11 === 10 ? 1 : modulo11;
 
     return digitoVerificador.toString();
   }

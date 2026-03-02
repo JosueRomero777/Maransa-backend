@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>1</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>AGRUPACION MARANSA S.A.S</razonSocial>
+    <nombreComercial>AGRUPACION MARANSA S.A.S</nombreComercial>
+    <ruc>0791844573001</ruc>
+    <claveAcceso>0203202601079184457300110010010000000034314749216</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>001</ptoEmi>
+    <secuencial>000000003</secuencial>
+    <dirMatriz>Av. Principal y Secundaria, Ciudad, Ecuador</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>02/03/2026</fechaEmision>
+    <dirEstablecimiento>Av. Principal y Secundaria, Ciudad, Ecuador</dirEstablecimiento>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>04</tipoIdentificacionComprador>
+    <razonSocialComprador>Exportquilsa &amp; Productores Asociados S.A.</razonSocialComprador>
+    <identificacionComprador>0992708093001</identificacionComprador>
+    <direccionComprador>Km 17 ½ Vía Durán Boliche, Durán</direccionComprador>
+    <totalSinImpuestos>42000.00</totalSinImpuestos>
+    <totalDescuento>0.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>0</codigoPorcentaje>
+        <baseImponible>42000.00</baseImponible>
+        <valor>0.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>0.00</propina>
+    <importeTotal>42000.00</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>18</formaPago>
+        <total>42000.00</total>
+        <plazo>60</plazo>
+        <unidadTiempo>dias</unidadTiempo>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>ORD-2026-0004</codigoPrincipal>
+      <codigoAuxiliar>4</codigoAuxiliar>
+      <descripcion>Sin Cabeza (Headless) 16/20 - Jumbo (Sin Cabeza) - Orden ORD-2026-0004</descripcion>
+      <cantidad>14000.00</cantidad>
+      <precioUnitario>3.000000</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>42000.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>0</codigoPorcentaje>
+          <tarifa>0</tarifa>
+          <baseImponible>42000.00</baseImponible>
+          <valor>0.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Observaciones">[AUTO_RECEPCION]</campoAdicional>
+    <campoAdicional nombre="Empacadora">Exportquilsa &amp; Productores Asociados S.A.</campoAdicional>
+    <campoAdicional nombre="Orden">4</campoAdicional>
+  </infoAdicional>
+</factura>

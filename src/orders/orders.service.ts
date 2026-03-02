@@ -15,6 +15,32 @@ export class OrdersService {
     private aiService: AIService,
   ) { }
 
+  private async getOrCreateActiveModelId(): Promise<number> {
+    const modeloActivo = await this.prisma.modelosML.findFirst({
+      where: { activo: true },
+      orderBy: { id: 'asc' },
+    });
+
+    if (modeloActivo) {
+      return modeloActivo.id;
+    }
+
+    const nuevoModelo = await this.prisma.modelosML.create({
+      data: {
+        nombre: 'Modelo Ensemble Default',
+        algoritmo: 'ENSEMBLE',
+        version: '1.0.0',
+        rutaModelo: '/models/ensemble_v1',
+        parametros: {},
+        metricas: {},
+        fechaEntrenamiento: new Date(),
+        activo: true,
+      },
+    });
+
+    return nuevoModelo.id;
+  }
+
   /**
    * Genera un código único para el pedido
    */
@@ -250,11 +276,13 @@ export class OrdersService {
           dias: diasAhead,
         });
 
+        const modeloId = await this.getOrCreateActiveModelId();
+
         // 4. Guardar predicción en la base de datos para futuros pedidos de hoy
         // Simulamos un predictionResponse compatible
         await this.prisma.prediccionesIA.create({
           data: {
-            modeloId: 1, // Fallback
+            modeloId,
             fechaPrediccion: targetDateMidnight,
             tipoProducto: mappedPresentation,
             calibre: paramsParaIA.tipoProducto,

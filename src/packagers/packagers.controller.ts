@@ -31,13 +31,13 @@ export class PackagersController {
   }
 
   @Get()
-  @Roles(RolUsuario.ADMIN, RolUsuario.COMPRAS, RolUsuario.GERENCIA)
+  @Roles(RolUsuario.ADMIN, RolUsuario.COMPRAS, RolUsuario.LOGISTICA, RolUsuario.GERENCIA)
   findAll(@Query() query: ListPackagersDto) {
     return this.packagersService.findAll(query);
   }
 
   @Get(':id')
-  @Roles(RolUsuario.ADMIN, RolUsuario.COMPRAS, RolUsuario.GERENCIA)
+  @Roles(RolUsuario.ADMIN, RolUsuario.COMPRAS, RolUsuario.LOGISTICA, RolUsuario.GERENCIA)
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.packagersService.findOne(id);
   }

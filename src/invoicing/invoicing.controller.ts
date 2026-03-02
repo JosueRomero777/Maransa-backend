@@ -61,7 +61,7 @@ export class InvoicingController {
   }
 
   @Patch('invoices/:id')
-  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA)
+  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA, RolUsuario.FACTURACION)
   updateInvoice(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateInvoiceDto: UpdateInvoiceDto,
@@ -70,13 +70,13 @@ export class InvoicingController {
   }
 
   @Post('invoices/:id/emit')
-  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA)
+  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA, RolUsuario.FACTURACION)
   emitInvoice(@Param('id', ParseIntPipe) id: number) {
     return this.invoicingService.emitInvoice(id);
   }
 
   @Post('invoices/:id/authorize')
-  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA)
+  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA, RolUsuario.FACTURACION)
   authorizeInvoice(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { numeroAutorizacion: string; xmlAutorizado: string },
@@ -85,7 +85,7 @@ export class InvoicingController {
   }
 
   @Post('invoices/:id/sign-and-authorize')
-  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA)
+  @Roles(RolUsuario.ADMIN, RolUsuario.GERENCIA, RolUsuario.FACTURACION)
   signAndAuthorizeInvoice(@Param('id', ParseIntPipe) id: number) {
     return this.invoicingService.signAndAuthorizeInvoice(id);
   }

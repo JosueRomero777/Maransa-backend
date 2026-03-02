@@ -26,7 +26,7 @@ export class InvoiceConfigController {
   }
 
   @Get('active')
-  @Roles('ADMIN', 'GERENCIA')
+  @Roles('ADMIN', 'GERENCIA', 'FACTURACION')
   findActive() {
     return this.configService.findActive();
   }
@@ -38,7 +38,7 @@ export class InvoiceConfigController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'GERENCIA')
+  @Roles('ADMIN', 'GERENCIA', 'FACTURACION')
   update(@Param('id') id: string, @Body() updateDto: UpdateInvoiceConfigDto) {
     return this.configService.update(+id, updateDto);
   }

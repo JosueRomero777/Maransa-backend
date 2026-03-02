@@ -381,10 +381,10 @@ export class PdfGeneratorService {
     const map: Record<string, string> = {
       '01': 'SIN UTILIZACION DEL SISTEMA FINANCIERO',
       '15': 'COMPENSACION DE DEUDAS',
-      '16': 'TARJETA DE DEBITO',
-      '17': 'DINERO ELECTRONICO',
-      '18': 'TARJETA PREPAGO',
-      '19': 'TARJETA DE CREDITO',
+      '16': 'DINERO ELECTRONICO',
+      '17': 'TARJETA PREPAGO',
+      '18': 'TARJETA DE CREDITO',
+      '19': 'COMPENSACION',
       '20': 'OTROS CON UTILIZACION DEL SISTEMA FINANCIERO',
     };
     if (!codigo) return '-';

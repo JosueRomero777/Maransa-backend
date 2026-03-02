@@ -369,18 +369,34 @@ export class InvoicingService {
     const isAutoReceptionInvoice = hasAutoTag || (Boolean(invoice.orderId && receptionCreatedAt) && createdNearReception);
 
     if (isAutoReceptionInvoice) {
-      const allowedFields = ['formaPago'];
+      const allowedFields = ['formaPago', 'plazoCredito', 'fechaVencimiento'];
       const attemptedFields = Object.keys(updateInvoiceDto).filter((key) => (updateInvoiceDto as any)[key] !== undefined);
       const invalidFields = attemptedFields.filter((field) => !allowedFields.includes(field));
 
       if (invalidFields.length > 0) {
-        throw new BadRequestException('Las facturas creadas automáticamente desde recepción solo permiten editar la forma de pago');
+        throw new BadRequestException('Las facturas creadas automáticamente desde recepción solo permiten editar forma de pago y sus campos relacionados');
+      }
+    }
+
+    const updateData: any = {
+      ...updateInvoiceDto,
+    };
+
+    if (updateInvoiceDto.fechaVencimiento !== undefined) {
+      if (!updateInvoiceDto.fechaVencimiento) {
+        updateData.fechaVencimiento = null;
+      } else {
+        const parsedFechaVencimiento = new Date(updateInvoiceDto.fechaVencimiento);
+        if (Number.isNaN(parsedFechaVencimiento.getTime())) {
+          throw new BadRequestException('La fecha de vencimiento no es válida');
+        }
+        updateData.fechaVencimiento = parsedFechaVencimiento;
       }
     }
 
     return this.prisma.invoice.update({
       where: { id },
-      data: updateInvoiceDto,
+      data: updateData,
       include: {
         packager: true,
         order: true,
@@ -531,6 +547,39 @@ export class InvoicingService {
       throw new BadRequestException('No hay configuración de facturación activa');
     }
 
+    let xmlToSign = invoice.xmlGenerado;
+    let claveAccesoForSign = invoice.claveAcceso || (invoice.xmlGenerado.match(/<claveAcceso>(.*?)<\/claveAcceso>/)?.[1] || '');
+
+    if (!/^\d{49}$/.test(claveAccesoForSign)) {
+      this.logger.warn(`⚠️ Clave de acceso inválida detectada para factura ${invoice.numeroFactura}: ${claveAccesoForSign}`);
+      this.logger.log('🔄 Regenerando XML y clave de acceso con algoritmo corregido...');
+
+      const regeneratedXml = this.xmlGenerator.generateInvoiceXml(invoice, config);
+      const regeneratedClave = regeneratedXml.match(/<claveAcceso>(.*?)<\/claveAcceso>/)?.[1] || '';
+
+      if (!/^\d{49}$/.test(regeneratedClave)) {
+        throw new BadRequestException('No se pudo generar una clave de acceso válida de 49 dígitos');
+      }
+
+      const xmlDir = path.join(process.cwd(), 'storage', 'invoices', 'xml');
+      await fs.mkdir(xmlDir, { recursive: true });
+      const regeneratedXmlPath = path.join(xmlDir, `factura_${invoice.id}_${Date.now()}_regenerado.xml`);
+      await fs.writeFile(regeneratedXmlPath, regeneratedXml, 'utf-8');
+
+      await this.prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          xmlGenerado: regeneratedXml,
+          rutaXmlGenerado: regeneratedXmlPath,
+          claveAcceso: regeneratedClave,
+        },
+      });
+
+      xmlToSign = regeneratedXml;
+      claveAccesoForSign = regeneratedClave;
+      this.logger.log(`✅ XML regenerado con clave válida: ${claveAccesoForSign}`);
+    }
+
     try {
       this.logger.log(`Iniciando firma y autorización de factura ${invoice.numeroFactura}`);
 
@@ -540,7 +589,7 @@ export class InvoicingService {
       // Paso 1: Firmar y enviar XML al SRI
       try {
         firmaResult = await this.sriSignature.firmarYAutorizarXml(
-          invoice.xmlGenerado,
+          xmlToSign,
           config.rutaCertificado || '',
           config.claveCertificado || '',
           'factura',
@@ -558,57 +607,16 @@ export class InvoicingService {
         }
       }
 
-      // Paso 2: Si está en procesamiento, hacer polling hasta obtener autorización
-      if (isProcessing && invoice.claveAcceso) {
-        const maxRetries = 5;
-        let retryCount = 0;
-        let authorized = false;
-
-        while (retryCount < maxRetries && !authorized) {
-          retryCount++;
-
-          // Esperar antes de consultar (3 segundos primer intento, 5 después)
-          const waitTime = retryCount === 1 ? 3000 : 5000;
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-
-          this.logger.log(`📋 Intento ${retryCount}/${maxRetries}: Consultando autorización...`);
-
-          try {
-            const consultaResult = await this.sriSignature.consultarAutorizacion(
-              invoice.claveAcceso,
-              config.urlFirmaService,
-            );
-
-            if (consultaResult.estado === 'AUTORIZADO' && consultaResult.xmlAutorizado) {
-              this.logger.log('✅ ¡Comprobante AUTORIZADO por el SRI!');
-              firmaResult = {
-                xmlFirmado: consultaResult.xmlAutorizado,
-                numeroAutorizacion: consultaResult.numeroAutorizacion,
-                fechaAutorizacion: consultaResult.fechaAutorizacion,
-                estado: 'AUTORIZADO',
-              };
-              authorized = true;
-            } else if (consultaResult.estado === 'NO AUTORIZADO' || consultaResult.estado === 'RECHAZADO') {
-              const mensajes = JSON.stringify(consultaResult.mensajes || []);
-              throw new BadRequestException(`Comprobante rechazado por el SRI: ${mensajes}`);
-            } else {
-              this.logger.log(`⏳ Estado: ${consultaResult.estado}, esperando...`);
-            }
-          } catch (consultaError: any) {
-            this.logger.warn(`⚠️ Error en consulta (intento ${retryCount}): ${consultaError.message}`);
-          }
-        }
-
-        if (!authorized) {
-          return {
-            queued: true,
-            authorized: false,
-            estado: invoice.estado,
-            claveAcceso: invoice.claveAcceso,
-            message: `El comprobante está en cola de procesamiento del SRI. Consulte nuevamente más tarde con la clave: ${invoice.claveAcceso}`,
-            invoice,
-          };
-        }
+      // Paso 2: Si está en procesamiento, responder inmediatamente para consulta manual posterior
+      if (isProcessing && claveAccesoForSign) {
+        return {
+          queued: true,
+          authorized: false,
+          estado: invoice.estado,
+          claveAcceso: claveAccesoForSign,
+          message: `El comprobante está en cola de procesamiento del SRI. Consulte nuevamente más tarde con la clave: ${claveAccesoForSign}`,
+          invoice,
+        };
       }
 
       if (!firmaResult) {
@@ -635,7 +643,7 @@ export class InvoicingService {
           ambiente: config.ambienteSRI,
           emision: config.tipoEmision,
           fecha: invoice.fechaEmision.toISOString(),
-          claveAcceso: invoice.claveAcceso || '',
+          claveAcceso: claveAccesoForSign,
           razonSocial: config.razonSocial,
           ruc: config.ruc,
           direccion: config.direccionMatriz,
@@ -1218,8 +1226,9 @@ export class InvoicingService {
     }
 
     const residuo = suma % 11;
-    const digito = residuo === 0 ? 0 : 11 - residuo;
+    const modulo11 = residuo === 0 ? 0 : 11 - residuo;
+    const digito = modulo11 === 11 ? 0 : modulo11 === 10 ? 1 : modulo11;
 
-    return digito === 11 ? 0 : digito;
+    return digito;
   }
 }

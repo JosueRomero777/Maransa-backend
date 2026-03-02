@@ -26,10 +26,10 @@ async function main() {
     update: {},
     create: {
       code: 'HL',
-      name: 'Sin Cola (Headless)',
+      name: 'Sin Cabeza (Headless)',
       rendimiento: 75,
       lifeSpanDays: 7,
-      description: 'Camarón sin cabeza ni cola, procesado',
+      description: 'Camarón sin cabeza, procesado',
     },
   });
 
@@ -62,7 +62,7 @@ async function main() {
   console.log(`✅ Vivo (L): ${presentationL.name}`);
 
   // 3. Tallas para Sin Cola (HEADLESS - HL)
-  console.log('\n📝 Creando tallas para Sin Cola (HL)...');
+  console.log('\n📝 Creando tallas para Sin cabeza (HL)...');
   const headlessSizes = [
     { code: '16/20', min: 16, max: 20, classification: 'Jumbo', minGrams: 22.7, maxGrams: 28.4 },
     { code: '21/25', min: 21, max: 25, classification: 'Extra Large', minGrams: 18.1, maxGrams: 21.6 },
@@ -96,7 +96,7 @@ async function main() {
         maxWeightGrams: size.maxGrams,
         minWeightOz: size.minGrams / 28.35,
         maxWeightOz: size.maxGrams / 28.35,
-        displayLabel: `${size.code} - ${size.classification} (Sin Cola)`,
+        displayLabel: `${size.code} - ${size.classification} (Sin Cabeza)`,
       },
     });
     console.log(`  ✓ ${size.code} - ${size.classification}`);
